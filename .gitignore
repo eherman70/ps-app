@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+*.log
+.vscode/
+.env
+.DS_Store
+*.tmp
+*.cache

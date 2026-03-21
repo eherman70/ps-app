@@ -1,0 +1,32 @@
+{
+  "name": "ps-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run frontend\" \"npm run backend\"",
+    "frontend": "vite",
+    "backend": "npm run dev --prefix backend",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron": "electron ."
+  },
+  "dependencies": {
+    "lucide-react": "^0.352.0",
+    "nodemon": "^3.1.14",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwind": "^4.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.16",
+    "concurrently": "^9.2.1",
+    "electron": "^41.0.2",
+    "electron-builder": "^26.8.1",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.3",
+    "vite": "^5.0.0"
+  },
+  "main": "electron/main.js"
+}
