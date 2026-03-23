@@ -8,7 +8,7 @@ function PCNList() {
   const { items: pcns, loading, saveItem, deleteItem, refreshItems } = useStorage('pcn');
   const { items: tickets, refreshItems: refreshTickets } = useStorage('ticket');
 
-  const isSupervisor = currentUser.role === 'supervisor' || currentUser.role === 'admin';
+  const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
   const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
 
   const [showForm, setShowForm] = useState(false);

@@ -11,7 +11,7 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
   const { items: marketCenters } = useStorage('marketcenter');
   const { items: saleNumbers } = useStorage('salenumber');
 
-  const isSupervisor = currentUser.role === 'supervisor' || currentUser.role === 'admin';
+  const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
   const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
 
   const [showForm, setShowForm] = useState(false);

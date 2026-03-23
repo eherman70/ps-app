@@ -10,7 +10,8 @@ function PaymentModule() {
   const { items: inputs } = useStorage('issuedinput');
   const { items: payments, refreshItems: refreshPayments } = useStorage('payment');
 
-  const isSupervisor = currentUser.role === 'supervisor' || currentUser.role === 'admin';
+  const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
+  const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
 
   const [selectedFarmer, setSelectedFarmer] = useState(null);
   const [paymentData, setPaymentData] = useState(null);
