@@ -38,10 +38,233 @@ async function initializeDatabase() {
     await ensureColumns();
     await createDefaultPrimarySocieties();
     await createDefaultAdmin();
+    await repairMissingSaleNumberIds();
+    await populatePCNsFromTickets();
+    await syncGradesFromMaster();
 
   } catch (error) {
     console.error('Database initialization error:', error);
     process.exit(1);
+  }
+}
+
+async function repairMissingSaleNumberIds() {
+  try {
+    const [rows] = await db.execute("SELECT COUNT(*) as count FROM tickets WHERE saleNumberId = '' OR saleNumberId IS NULL");
+    if (rows[0].count > 0) {
+      console.log(`Repairing ${rows[0].count} tickets with missing saleNumberId...`);
+      
+      // Stage 1: Sync within same PCN (if some tickets have ID but others don't)
+      await db.execute(`
+        UPDATE tickets 
+        SET saleNumberId = (
+          SELECT t2.saleNumberId 
+          FROM tickets t2 
+          WHERE t2.pcnNumber = tickets.pcnNumber 
+          AND t2.saleNumberId != '' 
+          AND t2.saleNumberId IS NOT NULL
+          LIMIT 1
+        )
+        WHERE (saleNumberId = '' OR saleNumberId IS NULL)
+        AND pcnNumber IS NOT NULL
+        AND EXISTS (
+          SELECT 1 
+          FROM tickets t2 
+          WHERE t2.pcnNumber = tickets.pcnNumber 
+          AND t2.saleNumberId != '' 
+          AND t2.saleNumberId IS NOT NULL
+        )
+      `);
+
+      // Stage 2: Sync via PCN table and sale_numbers mapping
+      await db.execute(`
+        UPDATE tickets 
+        SET saleNumberId = (
+          SELECT sn.id 
+          FROM sale_numbers sn 
+          JOIN pcns p ON p.saleNumber = sn.saleNumber 
+          WHERE p.pcnNumber = tickets.pcnNumber
+          LIMIT 1
+        )
+        WHERE (saleNumberId = '' OR saleNumberId IS NULL)
+        AND pcnNumber IS NOT NULL
+        AND EXISTS (
+          SELECT 1 
+          FROM sale_numbers sn 
+          JOIN pcns p ON p.saleNumber = sn.saleNumber 
+          WHERE p.pcnNumber = tickets.pcnNumber
+        )
+      `);
+      console.log('Ticket repair complete.');
+    }
+  } catch (e) {
+    console.warn('Ticket repair failed (this may be normal if PCN table is empty):', e.message);
+  }
+}
+
+async function syncPCNRecord(pcnNumber, saleNumberId, effectivePs) {
+  if (!pcnNumber) return;
+  try {
+    // 1. Get Sale Number string if possible
+    let saleNumberStr = '';
+    if (saleNumberId) {
+      const [snRows] = await db.execute('SELECT saleNumber FROM sale_numbers WHERE id = ?', [saleNumberId]);
+      if (snRows.length > 0) saleNumberStr = snRows[0].saleNumber;
+    }
+
+    // 2. Calculate totals from tickets
+    const [totals] = await db.execute(`
+      SELECT 
+        COUNT(*) as totalTickets,
+        SUM(netWeight) as totalWeight,
+        SUM(totalValue) as totalValue,
+        COUNT(DISTINCT farmerId) as totalFarmers,
+        MAX(ps) as latestPs,
+        MAX(saleNumberId) as latestSnId
+      FROM tickets
+      WHERE pcnNumber = ?
+    `, [pcnNumber]);
+
+    const stats = totals[0];
+    if (!stats || stats.totalTickets === 0) {
+      await db.execute('DELETE FROM pcns WHERE pcnNumber = ?', [pcnNumber]);
+      return;
+    }
+
+    if (!saleNumberStr && stats.latestSnId) {
+      const [snRows] = await db.execute('SELECT saleNumber FROM sale_numbers WHERE id = ?', [stats.latestSnId]);
+      if (snRows.length > 0) saleNumberStr = snRows[0].saleNumber;
+    }
+
+    const finalPs = (effectivePs && effectivePs !== 'All') ? effectivePs : (stats.latestPs || 'All');
+
+    const [existing] = await db.execute('SELECT id FROM pcns WHERE pcnNumber = ?', [pcnNumber]);
+    if (existing.length > 0) {
+      await db.execute(`
+        UPDATE pcns SET 
+          totalTickets = ?, 
+          totalWeight = ?, 
+          totalValue = ?, 
+          totalFarmers = ?,
+          saleNumber = COALESCE(NULLIF(?, ''), saleNumber),
+          ps = ?
+        WHERE pcnNumber = ?
+      `, [stats.totalTickets, stats.totalWeight || 0, stats.totalValue || 0, stats.totalFarmers || 0, saleNumberStr, finalPs, pcnNumber]);
+    } else {
+      const id = uuidv4();
+      await db.execute(`
+        INSERT INTO pcns (id, pcnNumber, saleNumber, ps, totalFarmers, totalTickets, totalWeight, totalValue, status, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Open', ?)
+      `, [id, pcnNumber, saleNumberStr || 'TBD', finalPs, stats.totalFarmers || 0, stats.totalTickets, stats.totalWeight || 0, stats.totalValue || 0, 
+          new Date().toISOString().slice(0, 19).replace('T', ' ')]);
+    }
+  } catch (e) {
+    console.error('Error syncing PCN record:', e);
+  }
+}
+
+async function syncGradesFromMaster() {
+  const MASTER_GRADES = [
+    { code: 'X1L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Choice', p: 2.370 },
+    { code: 'X2L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Fine', p: 2.112 },
+    { code: 'X3L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Good', p: 1.474 },
+    { code: 'X4L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Fair', p: 0.891 },
+    { code: 'X5L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Low', p: 0.555 },
+    { code: 'X1O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Choice', p: 2.405 },
+    { code: 'X2O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Fine', p: 2.225 },
+    { code: 'X3O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Good', p: 1.588 },
+    { code: 'X4O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Fair', p: 0.939 },
+    { code: 'X5O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Low', p: 0.590 },
+    { code: 'X6O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Reject', p: 0.250 },
+    { code: 'XLV', group: 'LUGS_VAR', cat: 'LUGS', q: 'Low', p: 0.579 },
+    { code: 'XOV', group: 'LUGS_VAR', cat: 'LUGS', q: 'Low', p: 0.634 },
+    { code: 'XND', group: 'NON_DESCRIPT', cat: 'LUGS', q: 'Reject', p: 0.164 },
+    { code: 'XG', group: 'LUGS_REJECT', cat: 'LUGS', q: 'Reject', p: 0.391 },
+    { code: 'C1L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Choice', p: 2.632 },
+    { code: 'C2L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Fine', p: 2.383 },
+    { code: 'C3L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Good', p: 1.795 },
+    { code: 'C4L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Fair', p: 1.262 },
+    { code: 'C5L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Low', p: 0.604 },
+    { code: 'C1O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Choice', p: 2.753 },
+    { code: 'C2O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Fine', p: 2.556 },
+    { code: 'C3O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Good', p: 1.870 },
+    { code: 'C4O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Fair', p: 1.368 },
+    { code: 'C5O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Low', p: 0.654 },
+    { code: 'C6O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Reject', p: 0.469 },
+    { code: 'L1L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Choice', p: 3.185 },
+    { code: 'L2L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Fine', p: 2.843 },
+    { code: 'L3L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Good', p: 2.246 },
+    { code: 'L4L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Fair', p: 1.748 },
+    { code: 'L5L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Low', p: 1.240 },
+    { code: 'L1O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Choice', p: 3.268 },
+    { code: 'L2O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Fine', p: 3.130 },
+    { code: 'L3O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Good', p: 2.688 },
+    { code: 'L4O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Fair', p: 1.900 },
+    { code: 'L5O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Low', p: 1.378 },
+    { code: 'L1R', group: 'LEAF_RED', cat: 'LEAF', q: 'Choice', p: 3.176 },
+    { code: 'L2R', group: 'LEAF_RED', cat: 'LEAF', q: 'Fine', p: 2.763 },
+    { code: 'L3R', group: 'LEAF_RED', cat: 'LEAF', q: 'Good', p: 2.012 },
+    { code: 'L4R', group: 'LEAF_RED', cat: 'LEAF', q: 'Fair', p: 1.441 },
+    { code: 'L5R', group: 'LEAF_RED', cat: 'LEAF', q: 'Low', p: 1.072 },
+    { code: 'LLV', group: 'LEAF_VAR', cat: 'LEAF', q: 'Low', p: 0.950 },
+    { code: 'LOV', group: 'LEAF_VAR', cat: 'LEAF', q: 'Low', p: 1.094 },
+    { code: 'LND', group: 'NON_DESCRIPT', cat: 'LEAF', q: 'Reject', p: 0.261 },
+    { code: 'LG', group: 'LEAF_REJECT', cat: 'LEAF', q: 'Reject', p: 0.391 },
+    { code: 'B1L', group: 'BRIGHT_LEAF', cat: 'LEAF', q: 'Choice', p: 0.519 },
+    { code: 'B1O', group: 'BRIGHT_LEAF', cat: 'LEAF', q: 'Choice', p: 0.571 },
+    { code: 'LK', group: 'LEAF_VAR', cat: 'LEAF', q: 'Low', p: 0.589 },
+    { code: 'M1L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Choice', p: 3.010 },
+    { code: 'M2L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Fine', p: 2.600 },
+    { code: 'M3L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Good', p: 1.973 },
+    { code: 'M4L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Fair', p: 1.385 },
+    { code: 'M5L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Low', p: 1.058 },
+    { code: 'M1O', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Choice', p: 3.163 },
+    { code: 'M2O', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Fine', price: 2.917 },
+    { code: 'M3O', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Good', price: 2.324 },
+    { code: 'M4O', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Fair', price: 1.731 },
+    { code: 'M5O', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Low', price: 1.229 },
+    { code: 'M1R', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Choice', price: 2.841 },
+    { code: 'M2R', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Fine', price: 2.720 },
+    { code: 'M3R', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Good', price: 1.895 },
+    { code: 'M4R', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Fair', price: 1.396 },
+    { code: 'M5R', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Low', price: 0.969 },
+    { code: 'L1OF', group: 'LEAF_ORANGE_FULL', cat: 'LEAF', q: 'Choice', p: 3.320, cls: 'STANDARD' },
+    { code: 'L2OF', group: 'LEAF_ORANGE_FULL', cat: 'LEAF', q: 'Fine', p: 3.240, cls: 'STANDARD' },
+    { code: 'L3OF', group: 'LEAF_ORANGE_FULL', cat: 'LEAF', q: 'Good', p: 2.860, cls: 'STANDARD' }
+  ];
+
+  try {
+    console.log('Synchronizing grade prices from master list...');
+    for (const g of MASTER_GRADES) {
+      const [existing] = await db.execute('SELECT id FROM grades WHERE grade_code = ?', [g.code]);
+      if (existing.length > 0) {
+        await db.execute('UPDATE grades SET price = ? WHERE grade_code = ?', [g.p || g.price, g.code]);
+      } else {
+        const id = uuidv4();
+        await db.execute(`INSERT INTO grades (id, name, price, description, status, grade_code, group_name, category, quality_level, grade_class, createdAt)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, g.code, g.p || g.price, `Master Grade ${g.code}`, 'Active', g.code, g.group, g.cat || g.category, g.q || g.quality, g.cls || g.grade_class || 'STANDARD',
+           new Date().toISOString().slice(0, 19).replace('T', ' ')]);
+      }
+    }
+    console.log('Grade synchronization complete.');
+  } catch (e) {
+    console.error('Error synchronizing grades:', e.message);
+  }
+}
+
+async function populatePCNsFromTickets() {
+  try {
+    const [rows] = await db.execute("SELECT DISTINCT pcnNumber, saleNumberId, ps FROM tickets WHERE pcnNumber IS NOT NULL AND pcnNumber != ''");
+    if (rows.length > 0) {
+      console.log(`Synchronizing ${rows.length} PCNs from existing tickets...`);
+      for (const row of rows) {
+        await syncPCNRecord(row.pcnNumber, row.saleNumberId, row.ps);
+      }
+      console.log('PCN synchronization complete.');
+    }
+  } catch (e) {
+    console.error('Error populating PCNs from tickets:', e.message);
   }
 }
 
@@ -96,7 +319,12 @@ async function createTables() {
     )`,
     `CREATE TABLE IF NOT EXISTS grades (
       id VARCHAR(36) PRIMARY KEY,
+      grade_code VARCHAR(10) UNIQUE,
       name VARCHAR(100) NOT NULL,
+      group_name VARCHAR(100),
+      category VARCHAR(50),
+      quality_level VARCHAR(50),
+      grade_class VARCHAR(50),
       price DECIMAL(10,2) NOT NULL,
       description TEXT,
       status VARCHAR(20) NOT NULL,
@@ -166,6 +394,7 @@ async function createTables() {
       pcnNumber VARCHAR(50),
       farmerId VARCHAR(36) NOT NULL,
       gradeId VARCHAR(36) NOT NULL,
+      grade_code VARCHAR(10),
       marketCenterId VARCHAR(36) NOT NULL,
       saleNumberId VARCHAR(36) NOT NULL,
       grossWeight DECIMAL(10,2) NOT NULL,
@@ -259,6 +488,15 @@ async function ensureColumns() {
     "ALTER TABLE pcns ADD COLUMN approvedAt DATETIME",
     "ALTER TABLE pcns ADD COLUMN approvedBy VARCHAR(100)",
     "ALTER TABLE users ADD COLUMN testMode TINYINT DEFAULT 0",
+    "ALTER TABLE grades ADD COLUMN grade_code VARCHAR(10)",
+    "ALTER TABLE grades ADD COLUMN group_name VARCHAR(100)",
+    "ALTER TABLE grades ADD COLUMN category VARCHAR(50)",
+    "ALTER TABLE grades ADD COLUMN quality_level VARCHAR(50)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_grade_code ON grades(grade_code)",
+    "CREATE INDEX IF NOT EXISTS idx_grade_category ON grades(category)",
+    "ALTER TABLE tickets ADD COLUMN grade_code VARCHAR(10)",
+    "ALTER TABLE grades ADD COLUMN grade_class VARCHAR(50)",
+    "CREATE INDEX IF NOT EXISTS idx_grade_class ON grades(grade_class)"
   ];
 
   for (const sql of alterations) {
@@ -608,23 +846,53 @@ app.get('/api/grades', authenticateToken, async (req, res) => {
 
 app.post('/api/grades', authenticateToken, async (req, res) => {
   try {
-    const { name, price, description, status } = req.body;
+    const { name, price, description, status, grade_code, group_name, category, quality_level, grade_class } = req.body;
+    
+    // Premium Grade Validation
+    if (grade_code && ['L1OF', 'L2OF', 'L3OF'].includes(grade_code)) {
+      if (group_name !== 'LEAF_ORANGE_FULL' || category !== 'LEAF') {
+        return res.status(400).json({ error: 'Premium grades (L-OF) must be in group LEAF_ORANGE_FULL and category LEAF' });
+      }
+    } else if (grade_code && grade_code.startsWith('L') && grade_code.includes('O')) {
+      if (group_name === 'LEAF_ORANGE_FULL') {
+        return res.status(400).json({ error: 'Standard orange leaf cannot be in LEAF_ORANGE_FULL' });
+      }
+    }
     const id = uuidv4();
-    await db.execute(`INSERT INTO grades (id, name, price, description, status, createdAt) VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, name, price, description, status, new Date().toISOString().slice(0, 19).replace('T', ' ')]);
-    res.json({ id, name, price, description, status });
+    await db.execute(`INSERT INTO grades (id, name, price, description, status, grade_code, group_name, category, quality_level, grade_class, createdAt)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, name, price, description, status || 'Active', grade_code, group_name, category, quality_level, grade_class,
+       new Date().toISOString().slice(0, 19).replace('T', ' ')]);
+    res.json({ id, name, price, description, status: status || 'Active', grade_code, group_name, category, quality_level, grade_class });
   } catch (error) {
+    if (error.message && error.message.includes('UNIQUE constraint failed: grades.grade_code')) {
+      return res.status(409).json({ error: 'Grade code already exists' });
+    }
+    console.error('Create grade error:', error);
     res.status(500).json({ error: 'Error creating grade' });
   }
 });
 
 app.put('/api/grades/:id', authenticateToken, async (req, res) => {
   try {
-    const { name, price, description, status } = req.body;
-    await db.execute('UPDATE grades SET name=?, price=?, description=?, status=? WHERE id=?',
-      [name, price, description, status, req.params.id]);
-    res.json({ id: req.params.id, name, price, description, status });
+    const { name, price, description, status, grade_code, group_name, category, quality_level, grade_class } = req.body;
+
+    // Premium Grade Validation
+    if (grade_code && ['L1OF', 'L2OF', 'L3OF'].includes(grade_code)) {
+      if (group_name !== 'LEAF_ORANGE_FULL' || category !== 'LEAF') {
+        return res.status(400).json({ error: 'Premium grades (L-OF) must be in group LEAF_ORANGE_FULL and category LEAF' });
+      }
+    } else if (grade_code && grade_code.startsWith('L') && grade_code.includes('O')) {
+      if (group_name === 'LEAF_ORANGE_FULL') {
+        return res.status(400).json({ error: 'Standard orange leaf cannot be in LEAF_ORANGE_FULL' });
+      }
+    }
+    await db.execute(`UPDATE grades SET name=?, price=?, description=?, status=?, grade_code=?, group_name=?, category=?, quality_level=?, grade_class=?
+                      WHERE id=?`,
+      [name, price, description, status, grade_code, group_name, category, quality_level, grade_class, req.params.id]);
+    res.json({ id: req.params.id, name, price, description, status, grade_code, group_name, category, quality_level, grade_class });
   } catch (error) {
+    console.error('Update grade error:', error);
     res.status(500).json({ error: 'Error updating grade' });
   }
 });
@@ -908,7 +1176,8 @@ app.get('/api/tickets', authenticateToken, async (req, res) => {
     const supervisor = isSupervisor(req.user);
     const psFilter = req.user.ps || 'All';
     const baseQuery = `SELECT t.*, f.farmerNumber, f.firstName, f.lastName,
-                               g.name as gradeName, mc.name as marketCenterName, sn.saleNumber
+                               g.name as gradeName, g.grade_code as gCode, g.category as gradeCategory, g.quality_level as gradeLevel,
+                               mc.name as marketCenterName, sn.saleNumber
                        FROM tickets t
                        JOIN farmers f ON t.farmerId = f.id
                        JOIN grades g ON t.gradeId = g.id
@@ -928,7 +1197,7 @@ app.get('/api/tickets/check/:ticketNumber', authenticateToken, async (req, res) 
   try {
     const [rows] = await db.execute(
       `SELECT t.*, f.farmerNumber, f.firstName, f.lastName,
-              g.name as gradeName, mc.name as marketCenterName, sn.saleNumber
+              g.name as gradeName, g.grade_code as gCode, mc.name as marketCenterName, sn.saleNumber
        FROM tickets t
        JOIN farmers f ON t.farmerId = f.id
        JOIN grades g ON t.gradeId = g.id
@@ -949,7 +1218,7 @@ app.get('/api/tickets/check/:ticketNumber', authenticateToken, async (req, res) 
 
 app.post('/api/tickets', authenticateToken, async (req, res) => {
   try {
-    const { ticketNumber, pcnNumber, farmerId, gradeId, marketCenterId, saleNumberId,
+    const { ticketNumber, pcnNumber, farmerId, gradeId, grade_code, marketCenterId, saleNumberId,
             grossWeight, tareWeight, netWeight, pricePerKg, totalValue, captureDate, ps } = req.body;
     const id = uuidv4();
     const supervisor = isSupervisor(req.user);
@@ -958,7 +1227,40 @@ app.post('/api/tickets', authenticateToken, async (req, res) => {
     // Check for duplicate
     const [existing] = await db.execute('SELECT id FROM tickets WHERE ticketNumber=?', [ticketNumber]);
     if (existing.length > 0) {
-      return res.status(409).json({ error: 'Ticket already exists', ticketId: existing[0].id });
+      return res.status(409).json({ 
+        error: 'Ticket already exists', 
+        ticketId: existing[0].id,
+        message: 'This ticket number has already been captured. Supervisors can update it.' 
+      });
+    }
+
+    // PCN Validations
+    if (pcnNumber) {
+      // 1. Check for mixing Sale Numbers or PS
+      const [pcnCheck] = await db.execute(
+        'SELECT saleNumberId, ps FROM tickets WHERE pcnNumber = ? LIMIT 1',
+        [pcnNumber]
+      );
+      if (pcnCheck.length > 0) {
+        if (pcnCheck[0].saleNumberId !== saleNumberId || pcnCheck[0].ps !== effectivePs) {
+          return res.status(400).json({ 
+            error: 'PCN Mixing Violation', 
+            message: 'This PCN is already linked to a different Sale Number or Primary Society.' 
+          });
+        }
+      }
+
+      // 2. Check for max 25 tickets
+      const [countCheck] = await db.execute(
+        'SELECT COUNT(*) as count FROM tickets WHERE pcnNumber = ?',
+        [pcnNumber]
+      );
+      if (countCheck[0].count >= 25) {
+        return res.status(400).json({ 
+          error: 'PCN Limit Reached', 
+          message: 'A PCN cannot contain more than 25 tickets.' 
+        });
+      }
     }
 
     if (!supervisor) {
@@ -968,14 +1270,19 @@ app.post('/api/tickets', authenticateToken, async (req, res) => {
       }
     }
 
-    await db.execute(`INSERT INTO tickets (id, ticketNumber, pcnNumber, farmerId, gradeId, marketCenterId,
+    await db.execute(`INSERT INTO tickets (id, ticketNumber, pcnNumber, farmerId, gradeId, grade_code, marketCenterId,
                        saleNumberId, grossWeight, tareWeight, netWeight, pricePerKg, totalValue, captureDate, ps, createdAt)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, ticketNumber, pcnNumber, farmerId, gradeId, marketCenterId, saleNumberId,
-       grossWeight, tareWeight, netWeight, pricePerKg, totalValue, captureDate, effectivePs,
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, ticketNumber, pcnNumber, farmerId, gradeId, grade_code, marketCenterId, saleNumberId,
+       grossWeight, tareWeight || 0, netWeight, pricePerKg, totalValue, captureDate, effectivePs,
        new Date().toISOString().slice(0, 19).replace('T', ' ')]);
 
-    res.json({ id, ticketNumber, pcnNumber, farmerId, gradeId, marketCenterId, saleNumberId,
+    // Sync PCN Record
+    if (pcnNumber) {
+      await syncPCNRecord(pcnNumber, saleNumberId, effectivePs);
+    }
+
+    res.json({ id, ticketNumber, pcnNumber, farmerId, gradeId, grade_code, marketCenterId, saleNumberId,
                grossWeight, tareWeight, netWeight, pricePerKg, totalValue, captureDate, ps: effectivePs });
   } catch (error) {
     console.error('Create ticket error:', error);
@@ -989,11 +1296,49 @@ app.put('/api/tickets/:id', authenticateToken, async (req, res) => {
     const { farmerId, gradeId, marketCenterId, saleNumberId,
             grossWeight, tareWeight, netWeight, pricePerKg, totalValue, captureDate, pcnNumber } = req.body;
 
+    // PCN Validations for Update
+    if (pcnNumber) {
+      // 1. Check for mixing Sale Numbers or PS (excluding current ticket)
+      const [pcnCheck] = await db.execute(
+        'SELECT saleNumberId, ps FROM tickets WHERE pcnNumber = ? AND id != ? LIMIT 1',
+        [pcnNumber, req.params.id]
+      );
+      if (pcnCheck.length > 0) {
+        const psValue = isSupervisor(req.user) ? (req.body.ps || pcnCheck[0].ps) : req.user.ps;
+        if (pcnCheck[0].saleNumberId !== saleNumberId || pcnCheck[0].ps !== psValue) {
+          return res.status(400).json({ 
+            error: 'PCN Mixing Violation', 
+            message: 'This PCN is already linked to a different Sale Number or Primary Society.' 
+          });
+        }
+      }
+
+      // 2. Check for max 25 tickets
+      const [countCheck] = await db.execute(
+        'SELECT COUNT(*) as count FROM tickets WHERE pcnNumber = ? AND id != ?',
+        [pcnNumber, req.params.id]
+      );
+      if (countCheck[0].count >= 25) {
+        return res.status(400).json({ 
+          error: 'PCN Limit Reached', 
+          message: 'A PCN cannot contain more than 25 tickets.' 
+        });
+      }
+    }
+
+    // Get old PCN before update for re-sync
+    const [oldTicket] = await db.execute('SELECT pcnNumber FROM tickets WHERE id = ?', [req.params.id]);
+    const oldPcn = oldTicket.length > 0 ? oldTicket[0].pcnNumber : null;
+
     await db.execute(`UPDATE tickets SET farmerId=?, gradeId=?, marketCenterId=?, saleNumberId=?,
                        grossWeight=?, tareWeight=?, netWeight=?, pricePerKg=?, totalValue=?,
                        captureDate=?, pcnNumber=? WHERE id=?`,
       [farmerId, gradeId, marketCenterId, saleNumberId,
        grossWeight, tareWeight, netWeight, pricePerKg, totalValue, captureDate, pcnNumber, req.params.id]);
+
+    // Sync PCN Records (both old and new)
+    if (pcnNumber) await syncPCNRecord(pcnNumber, saleNumberId, req.user.ps);
+    if (oldPcn && oldPcn !== pcnNumber) await syncPCNRecord(oldPcn, null, req.user.ps);
 
     res.json({ id: req.params.id, message: 'Ticket updated' });
   } catch (error) {
@@ -1004,7 +1349,16 @@ app.put('/api/tickets/:id', authenticateToken, async (req, res) => {
 app.delete('/api/tickets/:id', authenticateToken, async (req, res) => {
   try {
     if (!isSupervisor(req.user)) return res.status(403).json({ error: 'Access denied' });
+    
+    // Get PCN before deletion to re-sync
+    const [ticket] = await db.execute('SELECT pcnNumber FROM tickets WHERE id = ?', [req.params.id]);
+    const pcn = ticket.length > 0 ? ticket[0].pcnNumber : null;
+
     await db.execute('DELETE FROM tickets WHERE id=?', [req.params.id]);
+
+    // Re-sync PCN
+    if (pcn) await syncPCNRecord(pcn, null, req.user.ps);
+
     res.json({ message: 'Ticket deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Error deleting ticket' });

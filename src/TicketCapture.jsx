@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useStorage } from './hooks/useStorage';
 import { Plus, X, AlertTriangle, CheckCircle, Edit3, Trash2 } from 'lucide-react';
+import { TOBACCO_GRADES_MASTER } from './data/tobaccoGrades';
 
-function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) {
+function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, prefilledSaleNumberId }) {
   const { darkMode, currentUser, activePS, testMode } = useAppContext();
   const { items, loading, saveItem, deleteItem, refreshItems } = useStorage('ticket');
   const { items: farmers } = useStorage('farmer');
@@ -17,7 +18,7 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
   const [showForm, setShowForm] = useState(false);
   const [selectedMarketCenter, setSelectedMarketCenter] = useState(prefilledMarketCenter || '');
   const [selectedSaleNumber, setSelectedSaleNumber] = useState(prefilledSaleNumber || '');
-  const [selectedSaleNumberId, setSelectedSaleNumberId] = useState('');
+  const [selectedSaleNumberId, setSelectedSaleNumberId] = useState(prefilledSaleNumberId || '');
   const [selectedSaleDate, setSelectedSaleDate] = useState('');
   const [selectedPcn, setSelectedPcn] = useState('');
   const [workflowComplete, setWorkflowComplete] = useState(false);
@@ -26,6 +27,17 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
   const [isUpdateMode, setIsUpdateMode] = useState(false); // true = updating existing ticket
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
   const ticketNumberRef = useRef(null);
+  
+  // Failsafe: if we have a sale number but no ID, find it
+  useEffect(() => {
+    if (selectedSaleNumber && !selectedSaleNumberId) {
+      const sn = saleNumbers.find(s => s.saleNumber === selectedSaleNumber);
+      if (sn) {
+        console.log('Resolving saleNumberId for:', selectedSaleNumber, '->', sn.id);
+        setSelectedSaleNumberId(sn.id);
+      }
+    }
+  }, [selectedSaleNumber, selectedSaleNumberId, saleNumbers]);
 
   const handleMarketCenterChange = (mcId) => {
     setSelectedMarketCenter(mcId);
@@ -120,13 +132,22 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
   const handleKeyDown = (e, nextFieldId, isTicketField = false) => {
     if (e.key === 'Enter') {
       e.preventDefault();
+      
+      // If ENTER on ticket number, trigger duplicate check immediately
       if (isTicketField) {
         checkDuplicateTicket(form.ticketNumber);
       }
+      
       if (nextFieldId === 'submit') {
         handleSubmit();
       } else {
-        document.getElementById(nextFieldId)?.focus();
+        const nextEl = document.getElementById(nextFieldId);
+        if (nextEl) {
+          nextEl.focus();
+          if (nextEl.tagName === 'SELECT') {
+            // Optional: open select on focus if possible, or just focus it
+          }
+        }
       }
     }
   };
@@ -153,6 +174,7 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
 
     const farmer = farmers.find(f => f.id === form.farmerId);
     const grade = grades.find(g => g.id === form.gradeId);
+    let effectiveSaleNumberId = selectedSaleNumberId;
     const marketCenter = marketCenters.find(mc => mc.id === selectedMarketCenter);
     const saleNum = saleNumbers.find(sn => sn.id === selectedSaleNumberId);
 
@@ -169,6 +191,7 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
           body: JSON.stringify({
             farmerId: form.farmerId,
             gradeId: form.gradeId,
+            grade_code: grade ? grade.grade_code : '',
             marketCenterId: selectedMarketCenter,
             saleNumberId: selectedSaleNumberId || duplicateTicket.saleNumberId,
             grossWeight,
@@ -191,15 +214,29 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
       return;
     }
 
+    if (!selectedSaleNumberId) {
+      const snFound = saleNumbers.find(s => s.saleNumber === selectedSaleNumber);
+      if (snFound) {
+        // Use the found ID if state hasn't updated yet
+        console.warn('selectedSaleNumberId was empty in handleSubmit, using found ID:', snFound.id);
+        effectiveSaleNumberId = snFound.id;
+      } else {
+        alert('Internal Error: Sale Number ID not found. Please re-select the Sale Number.');
+        return;
+      }
+    }
+
     // Create new ticket via API
     try {
+      console.log('Creating ticket with saleNumberId:', effectiveSaleNumberId);
       await window.api.create('tickets', {
         ticketNumber: form.ticketNumber,
         pcnNumber: selectedPcn,
         farmerId: form.farmerId,
         gradeId: form.gradeId,
+        grade_code: grade ? grade.grade_code : '',
         marketCenterId: selectedMarketCenter,
-        saleNumberId: selectedSaleNumberId,
+        saleNumberId: effectiveSaleNumberId,
         grossWeight,
         tareWeight: 0,
         netWeight,
@@ -346,11 +383,19 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
             {workflowComplete && (
               <div className={`p-4 rounded-lg mb-4 border-2 ${darkMode ? 'bg-green-900 border-green-700' : 'bg-green-50 border-green-200'}`}>
                 <p className="font-semibold text-green-600 mb-2">✓ Workflow Complete — Ready to Capture Tickets</p>
-                <div className="text-sm grid grid-cols-2 gap-2">
+                <div className="text-sm grid grid-cols-2 gap-4">
                   <p><strong>Market Center:</strong> {marketCenters.find(mc => mc.id === selectedMarketCenter)?.name}</p>
                   <p><strong>Sale Number:</strong> {selectedSaleNumber}</p>
                   <p><strong>Sale Date:</strong> {selectedSaleDate}</p>
-                  <p><strong>PCN:</strong> {selectedPcn}</p>
+                  <div className="flex items-center justify-between col-span-2 mt-2 p-2 bg-white/10 rounded-lg border border-white/20">
+                    <p><strong>Current PCN:</strong> <span className="text-xl font-black bg-white text-green-800 px-3 py-1 rounded-md ml-2">{selectedPcn}</span></p>
+                    <div className="text-right">
+                      <p className="text-[10px] uppercase font-bold opacity-70">Tickets in PCN</p>
+                      <p className={`text-2xl font-black ${items.filter(t => t.pcnNumber === selectedPcn).length >= 25 ? 'text-rose-400 animate-pulse' : 'text-white'}`}>
+                        {items.filter(t => t.pcnNumber === selectedPcn).length} / 25
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -364,37 +409,56 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
 
               {/* Duplicate warning */}
               {duplicateTicket && (
-                <div className={`mb-4 p-4 rounded-lg border-2 ${isSupervisor ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/30' : 'border-red-500 bg-red-50 dark:bg-red-900/30'}`}>
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className={`w-5 h-5 mt-0.5 flex-shrink-0 ${isSupervisor ? 'text-yellow-600' : 'text-red-600'}`} />
+                <div className={`mb-6 p-5 rounded-2xl border-2 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300 ${isSupervisor ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'}`}>
+                  <div className="flex items-start gap-4">
+                    <div className={`p-2 rounded-full ${isSupervisor ? 'bg-amber-100 text-amber-600' : 'bg-rose-100 text-rose-600'}`}>
+                      <AlertTriangle className="w-6 h-6" />
+                    </div>
                     <div className="flex-1">
-                      <p className={`font-semibold ${isSupervisor ? 'text-yellow-800 dark:text-yellow-300' : 'text-red-800 dark:text-red-300'}`}>
-                        ⚠ Ticket Already Exists
-                      </p>
-                      <p className="text-sm mt-1">
-                        Ticket <strong>{duplicateTicket.ticketNumber}</strong> was already captured —
-                        Farmer: {duplicateTicket.firstName} {duplicateTicket.lastName} |
-                        Grade: {duplicateTicket.gradeName} |
+                      <div className="flex justify-between items-start">
+                        <p className={`text-lg font-bold ${isSupervisor ? 'text-amber-900 dark:text-amber-200' : 'text-rose-900 dark:text-rose-200'}`}>
+                          {isSupervisor ? 'Existing Ticket Detected' : 'Unauthorized Duplicate Capture'}
+                        </p>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${isSupervisor ? 'bg-amber-200 text-amber-800' : 'bg-rose-200 text-rose-800'}`}>
+                          {isSupervisor ? 'Supervisor Review' : 'Clerk Warning'}
+                        </span>
+                      </div>
+                      <p className="text-sm mt-1 opacity-90 leading-relaxed">
+                        Ticket <span className="font-mono font-bold font-black">{duplicateTicket.ticketNumber}</span> has already been captured for:
+                        <br />
+                        <span className="font-semibold">{duplicateTicket.firstName} {duplicateTicket.lastName}</span> · 
+                        Grade: {duplicateTicket.gCode || duplicateTicket.grade_code} · 
                         Mass: {duplicateTicket.netWeight} Kg
                       </p>
-                      {isSupervisor && !isUpdateMode && (
-                        <button
-                          onClick={() => setIsUpdateMode(true)}
-                          className="mt-2 flex items-center gap-2 px-4 py-1.5 bg-yellow-600 text-white rounded-lg text-sm hover:bg-yellow-700"
+                      
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        {isSupervisor ? (
+                          !isUpdateMode ? (
+                            <button
+                              onClick={() => setIsUpdateMode(true)}
+                              className="flex items-center gap-2 px-5 py-2 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 shadow-md transition-all active:scale-95"
+                            >
+                              <Edit3 className="w-4 h-4" /> Load & Edit This Ticket
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-3 py-2 px-4 bg-green-100 dark:bg-green-900/30 rounded-xl border border-green-200 dark:border-green-800">
+                              <CheckCircle className="w-4 h-4 text-green-600" />
+                              <span className="text-sm text-green-800 dark:text-green-300 font-bold">In Update Mode</span>
+                              <button onClick={() => setIsUpdateMode(false)} className="text-xs text-green-700 dark:text-green-400 font-semibold hover:underline px-2 border-l border-green-300 ml-2">Exit</button>
+                            </div>
+                          )
+                        ) : (
+                          <div className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold shadow-lg">
+                            <X className="w-4 h-4" /> Entry Blocked — Contact Supervisor
+                          </div>
+                        )}
+                        <button 
+                          onClick={() => { setForm({...form, ticketNumber: ''}); clearDuplicate(); ticketNumberRef.current?.focus(); }}
+                          className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-200 hover:bg-gray-50 bg-white'}`}
                         >
-                          <Edit3 className="w-4 h-4" /> Update Existing Ticket
+                          Clear & Scan New
                         </button>
-                      )}
-                      {isUpdateMode && (
-                        <div className="flex items-center gap-2 mt-2">
-                          <CheckCircle className="w-4 h-4 text-green-600" />
-                          <span className="text-sm text-green-700 dark:text-green-400 font-medium">Update mode — Edit fields and save</span>
-                          <button onClick={() => setIsUpdateMode(false)} className="text-xs text-gray-500 underline">Cancel update</button>
-                        </div>
-                      )}
-                      {!isSupervisor && (
-                        <p className="text-sm text-red-700 dark:text-red-400 mt-1 font-medium">Contact a supervisor to update this ticket.</p>
-                      )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -448,10 +512,30 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'} ${(!workflowComplete || (duplicateTicket && !isUpdateMode)) ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     <option value="">Select Grade</option>
-                    {grades.map(g => (
-                      <option key={g.id} value={g.id}>{g.name} - ${g.price}/kg</option>
-                    ))}
+                    {['LUGS', 'CUTTERS', 'THIN_LEAF', 'LEAF', 'Full Orange Leaf (Premium)', 'Other'].map(cat => {
+                      const catGrades = grades.filter(g => {
+                        if (cat === 'Full Orange Leaf (Premium)') return g.group_name === 'LEAF_ORANGE_FULL';
+                        if (cat === 'LEAF') return g.category === 'LEAF' && g.group_name !== 'LEAF_ORANGE_FULL';
+                        return (g.category || 'Other') === cat;
+                      });
+                      if (catGrades.length === 0) return null;
+                      return (
+                        <optgroup key={cat} label={cat}>
+                          {catGrades.sort((a,b) => {
+                            const order = ['Choice', 'Fine', 'Good', 'Fair', 'Low', 'Reject'];
+                            return order.indexOf(a.quality_level || 'Reject') - order.indexOf(b.quality_level || 'Reject');
+                          }).map(g => (
+                            <option key={g.id} value={g.id}>{g.grade_code} - ${g.price} ({g.quality_level})</option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
                   </select>
+                  {form.gradeId && (
+                    <p className="text-[10px] text-blue-600 mt-1 uppercase font-bold">
+                       {grades.find(g => g.id === form.gradeId)?.name}
+                    </p>
+                  )}
                 </div>
 
                 <div>

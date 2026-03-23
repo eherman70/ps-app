@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useStorage } from './hooks/useStorage';
-import { Plus, Edit, Trash2, X, Search } from 'lucide-react';
+import { Plus, Edit, Trash2, X, Search, Upload, FileDown } from 'lucide-react';
+import { parseCSV, generateCSV, downloadCSV } from './utils';
 
 function FarmerManagement() {
   const { darkMode, currentUser, activePS, testMode } = useAppContext();
@@ -73,6 +74,91 @@ function FarmerManagement() {
     }
   };
 
+  const downloadTemplate = () => {
+    const headers = ['firstName', 'lastName', 'middleName', 'gender', 'age', 'phoneNumber', 'village', 'hectares', 'seasonName', 'ps', 'idType', 'idNumber'];
+    const sample = [['John', 'Doe', 'K', 'Male', '45', '0712345678', 'Ushetu', '2.5', seasons[0]?.name || 'Season 2024', currentUser.ps === 'All' ? 'DEFAULT' : currentUser.ps, 'Voter ID', 'V-123456']];
+    const csv = generateCSV([headers, ...sample]);
+    downloadCSV('farmer_import_template.csv', csv);
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target.result;
+      const rows = parseCSV(text);
+      if (rows.length < 2) return alert('Invalid CSV format');
+
+      const headers = rows[0];
+      const data = rows.slice(1);
+      
+      const counterResult = await window.storage.get('counter_farmer');
+      let counter = parseInt(counterResult?.value || '1000');
+      
+      let importedCount = 0;
+      let errorCount = 0;
+
+      for (const row of data) {
+        if (row.length < 2) continue; // Skip empty rows
+        
+        const rowData = {};
+        headers.forEach((h, i) => {
+           rowData[h.trim()] = row[i];
+        });
+
+        // Validation & Mapping
+        if (!rowData.firstName || !rowData.lastName || !rowData.village || !rowData.seasonName) {
+           errorCount++;
+           continue;
+        }
+
+        const season = seasons.find(s => s.name === rowData.seasonName);
+        if (!season) {
+           errorCount++;
+           continue;
+        }
+
+        const ha = parseFloat(rowData.hectares) || 0;
+        const farmerNumber = `F${counter++}`;
+
+        const farmerData = {
+          firstName: rowData.firstName,
+          middleName: rowData.middleName || '',
+          lastName: rowData.lastName,
+          gender: rowData.gender || 'Male',
+          age: rowData.age || '',
+          phoneNumber: rowData.phoneNumber || '',
+          village: rowData.village,
+          hectares: rowData.hectares || '0',
+          contractedVolume: (ha * 1400).toString(),
+          seasonId: season.id,
+          ps: rowData.ps || (currentUser.ps === 'All' ? '' : currentUser.ps),
+          idType: rowData.idType || 'Voter ID',
+          idNumber: rowData.idNumber || '',
+          status: 'Active',
+          farmerNumber,
+          testMode,
+          createdAt: new Date().toISOString()
+        };
+
+        try {
+          await saveItem(null, farmerData);
+          importedCount++;
+        } catch (err) {
+          errorCount++;
+        }
+      }
+
+      await window.storage.set('counter_farmer', counter.toString());
+      alert(`Import complete! Successfully imported: ${importedCount}, Errors: ${errorCount}`);
+      // Clear file input
+      e.target.value = null;
+    };
+    reader.readAsText(file);
+  };
+
   const handleHectares = (val) => {
     const ha = parseFloat(val) || 0;
     // Only auto-calc if not in manual override mode
@@ -106,13 +192,28 @@ function FarmerManagement() {
     <div>
       <div className="flex justify-between mb-6">
         <h3 className="text-xl font-semibold">Farmers</h3>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg"
-        >
-          <Plus className="w-5 h-5" />
-          <span>New Farmer</span>
-        </button>
+        <div className="flex space-x-2">
+          <button
+            onClick={downloadTemplate}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+            title="Download Import Template"
+          >
+            <FileDown className="w-5 h-5" />
+            <span className="hidden md:inline">Template</span>
+          </button>
+          <label className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition cursor-pointer">
+            <Upload className="w-5 h-5" />
+            <span className="hidden md:inline">Import</span>
+            <input type="file" accept=".csv" onChange={handleImport} className="hidden" />
+          </label>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+          >
+            <Plus className="w-5 h-5" />
+            <span>New Farmer</span>
+          </button>
+        </div>
       </div>
 
       {showForm && (

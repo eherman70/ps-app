@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import SalesSummary from './SalesSummary';
+import TicketList from './TicketList';
 import PCNManagement from '../PCNManagement';
 import PaymentModule from '../PaymentModule';
 
@@ -10,6 +11,7 @@ function TobaccoSalesModule() {
 
   const tabs = [
     { id: 'sales', label: 'Tobacco Sales' },
+    { id: 'tickets', label: 'Detailed Tickets' },
     { id: 'pcn', label: 'PCN', sup: true },
     { id: 'payments', label: 'Payments', sup: true },
   ];
@@ -33,6 +35,7 @@ function TobaccoSalesModule() {
       </div>
 
       {activeTab === 'sales' && <SalesSummary />}
+      {activeTab === 'tickets' && <TicketList />}
       {activeTab === 'pcn' && <PCNManagement />}
       {activeTab === 'payments' && <PaymentModule />}
     </div>

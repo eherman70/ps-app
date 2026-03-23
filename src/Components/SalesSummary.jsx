@@ -18,6 +18,7 @@ function SalesSummary() {
         onClose={() => setCapturingSale(null)} 
         prefilledMarketCenter={capturingSale.marketCenterId}
         prefilledSaleNumber={capturingSale.saleNumber}
+        prefilledSaleNumberId={capturingSale.id}
       />
     );
   }
@@ -28,9 +29,9 @@ function SalesSummary() {
     const saleTickets = tickets.filter(t => t.saleNumber === sn.saleNumber);
     const bales = saleTickets.length;
     
-    // Sum mass and value
-    const mass = saleTickets.reduce((sum, t) => sum + parseFloat(t.mass || 0), 0);
-    const value = saleTickets.reduce((sum, t) => sum + parseFloat(t.value || 0), 0);
+    // Sum mass and value - using both legacy and new field names for robustness
+    const mass = saleTickets.reduce((sum, t) => sum + parseFloat(t.netWeight || t.mass || 0), 0);
+    const value = saleTickets.reduce((sum, t) => sum + parseFloat(t.totalValue || t.value || 0), 0);
     
     // Calculate true average price
     const avgPrice = mass > 0 ? value / mass : 0;
