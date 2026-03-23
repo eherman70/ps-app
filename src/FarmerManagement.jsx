@@ -8,20 +8,22 @@ function FarmerManagement() {
   const { items: farmers, loading, saveItem, deleteItem } = useStorage('farmer');
   const { items: seasons } = useStorage('season');
 
-  const activePSValue = currentUser.role === 'Admin' ? (activePS || 'All') : currentUser.ps;
+  const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
+  const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
 
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
+  const [volumeOverride, setVolumeOverride] = useState(false);
   const [form, setForm] = useState({
     firstName: '', middleName: '', lastName: '', gender: 'Male', age: '',
     phoneNumber: '', idType: 'Voter ID', idNumber: '', village: '',
-    hectares: '', contractedVolume: '', season: '', status: 'Active', ps: activePSValue === 'All' ? '' : activePSValue
+    hectares: '', contractedVolume: '', seasonId: '', status: 'Active', ps: activePSValue === 'All' ? '' : activePSValue
   });
   const [editing, setEditing] = useState(null);
 
   const handleSubmit = async () => {
-    if (!form.firstName || !form.lastName || !form.season || !form.ps) {
-      alert('Fill required fields');
+    if (!form.firstName || !form.lastName || !form.seasonId || !form.ps) {
+      alert('Fill required fields: First Name, Last Name, Season, PS');
       return;
     }
 
@@ -52,8 +54,9 @@ function FarmerManagement() {
     setForm({
       firstName: '', middleName: '', lastName: '', gender: 'Male', age: '',
       phoneNumber: '', idType: 'Voter ID', idNumber: '', village: '',
-      hectares: '', contractedVolume: '', season: '', status: 'Active', ps: activePSValue === 'All' ? '' : activePSValue
+      hectares: '', contractedVolume: '', seasonId: '', status: 'Active', ps: activePSValue === 'All' ? '' : activePSValue
     });
+    setVolumeOverride(false);
     setEditing(null);
     setShowForm(false);
   };
@@ -72,7 +75,12 @@ function FarmerManagement() {
 
   const handleHectares = (val) => {
     const ha = parseFloat(val) || 0;
-    setForm({...form, hectares: val, contractedVolume: (ha * 1400).toString()});
+    // Only auto-calc if not in manual override mode
+    if (!volumeOverride) {
+      setForm({...form, hectares: val, contractedVolume: (ha * 1400).toString()});
+    } else {
+      setForm({...form, hectares: val});
+    }
   };
 
   const handleKeyDown = (e, nextFieldId) => {
@@ -198,27 +206,36 @@ function FarmerManagement() {
               />
             </div>
             <div>
-              <label className="block mb-2 text-sm">Volume (Kg)</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm">Volume (Kg)</label>
+                {isSupervisor && (
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input type="checkbox" checked={volumeOverride} onChange={e => setVolumeOverride(e.target.checked)} className="rounded" />
+                    Manual override
+                  </label>
+                )}
+              </div>
               <input
                 type="number"
                 value={form.contractedVolume}
-                readOnly
-                className={`w-full px-3 py-2 border rounded-lg bg-gray-100 ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-400' : 'border-gray-300'}`}
+                onChange={(e) => setForm({...form, contractedVolume: e.target.value})}
+                readOnly={!volumeOverride}
+                className={`w-full px-3 py-2 border rounded-lg ${volumeOverride ? '' : 'bg-gray-100'} ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
-              <p className="text-xs mt-1">Auto: 1 Ha = 1,400 Kg</p>
+              <p className="text-xs mt-1">{volumeOverride ? '⚠ Manual mode — auto-calc disabled' : 'Auto: 1 Ha = 1,400 Kg'}</p>
             </div>
             
             <div>
               <label className="block mb-2 text-sm">Season *</label>
               <select
                 id="fm-season"
-                value={form.season}
-                onChange={(e) => setForm({...form, season: e.target.value})}
+                value={form.seasonId}
+                onChange={(e) => setForm({...form, seasonId: e.target.value})}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-phone')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
                 <option value="">Select Season</option>
-                {seasons.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                {seasons.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
 
@@ -329,7 +346,7 @@ function FarmerManagement() {
                 <td className="px-4 py-3">{item.phoneNumber}</td>
                 <td className="px-4 py-3">{item.village}</td>
                 <td className="px-4 py-3">{item.hectares}</td>
-                <td className="px-4 py-3">{item.season}</td>
+                <td className="px-4 py-3">{item.seasonName || seasons.find(s => s.id === item.seasonId)?.name || item.season || '-'}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-1 text-xs rounded-full font-medium ${item.status === 'Inactive' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'}`}>
                     {item.status || 'Active'}

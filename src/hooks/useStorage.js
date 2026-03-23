@@ -49,5 +49,5 @@ export function useStorage(key) {
     loadItems();
   }, [key]);
 
-  return { items, loading, saveItem, deleteItem };
+  return { items, loading, saveItem, deleteItem, refreshItems: loadItems };
 }

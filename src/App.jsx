@@ -7,7 +7,7 @@ import RegistrationModule from './Components/RegistrationModule.jsx';
 import InputsManagement from './Components/InputsManagement.jsx';
 import TobaccoSalesModule from './Components/TobaccoSalesModule.jsx';
 import Reports from './Components/Reports.jsx';
-import RightPanel from './Components/RightPanel.jsx';
+import Settings from './Components/Settings.jsx';
 import { Leaf } from 'lucide-react';
 
 export default function TobaccoManagementSystem() {
@@ -41,9 +41,9 @@ export default function TobaccoManagementSystem() {
               {activeModule === 'inputs' && <InputsManagement />}
               {activeModule === 'tobacco-sales' && <TobaccoSalesModule />}
               {activeModule === 'reports' && <Reports />}
+              {activeModule === 'settings' && <Settings />}
             </main>
           </div>
-          {/* {activeModule === 'dashboard' && <RightPanel />} */}
         </div>
       </div>
     </div>
