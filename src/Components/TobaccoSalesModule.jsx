@@ -20,7 +20,7 @@ function TobaccoSalesModule() {
 
       <div className="mb-6">
         <div className="flex space-x-2 border-b border-gray-200 dark:border-gray-700">
-          {tabs.filter(t => !t.sup || currentUser.role === 'supervisor').map(tab => (
+          {tabs.filter(t => !t.sup || currentUser.role === 'Supervisor' || currentUser.role === 'Admin').map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
