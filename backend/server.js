@@ -431,7 +431,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const hashedPassword = bcrypt.hashSync(password, 10);
     const id = uuidv4();
-    const role = 'Capture Clerk';
+    const role = 'Clerk';
     const effectivePs = ps || 'All';
 
     await db.execute(`INSERT INTO users (id, username, password, fullName, role, ps, darkMode, testMode, createdAt)
@@ -483,10 +483,10 @@ app.post('/api/users', authenticateToken, async (req, res) => {
     const id = uuidv4();
     await db.execute(`INSERT INTO users (id, username, password, fullName, role, ps, darkMode, testMode, createdAt)
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, username, hashedPassword, fullName, role || 'Capture Clerk', effectivePs, 0, 0,
+      [id, username, hashedPassword, fullName, role || 'Clerk', effectivePs, 0, 0,
        new Date().toISOString().slice(0, 19).replace('T', ' ')]);
 
-    res.json({ id, username, fullName, role: role || 'Capture Clerk', ps: effectivePs });
+    res.json({ id, username, fullName, role: role || 'Clerk', ps: effectivePs });
   } catch (error) {
     console.error('Create user error:', error);
     res.status(500).json({ error: 'Error creating user' });

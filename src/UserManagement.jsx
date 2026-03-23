@@ -10,7 +10,7 @@ function UserManagement() {
   const { items: societies } = useStorage('ps');
   
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ username: '', password: '', fullName: '', role: 'Capture Clerk', ps: '' });
+  const [form, setForm] = useState({ username: '', password: '', fullName: '', role: 'Clerk', ps: '' });
   const [editing, setEditing] = useState(null);
 
   const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
@@ -44,7 +44,7 @@ function UserManagement() {
   };
 
   const resetForm = () => {
-    setForm({ username: '', password: '', fullName: '', role: 'Capture Clerk', ps: '' });
+    setForm({ username: '', password: '', fullName: '', role: 'Clerk', ps: '' });
     setEditing(null);
     setShowForm(false);
   };
@@ -159,7 +159,7 @@ function UserManagement() {
                 onChange={(e) => setForm({...form, role: e.target.value})}
                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
-                <option value="Capture Clerk">Capture Clerk</option>
+                <option value="Clerk">Clerk</option>
                 <option value="Supervisor">Supervisor</option>
                 <option value="Admin">Admin</option>
               </select>

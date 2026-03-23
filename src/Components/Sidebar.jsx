@@ -5,7 +5,7 @@ function Sidebar() {
   const { currentUser, activeModule, setActiveModule, darkMode, logout, testMode } = useAppContext();
 
   const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
-  const isClerk = currentUser.role === 'Capture Clerk';
+  const isClerk = currentUser.role === 'Clerk';
 
   const moduleItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
