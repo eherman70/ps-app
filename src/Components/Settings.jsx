@@ -1,14 +1,97 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { Moon, Sun, FlaskConical, Lock, User, Save, CheckCircle } from 'lucide-react';
 
 function Settings() {
   const { currentUser, darkMode, toggleDarkMode, testMode, setTestMode } = useAppContext();
-  const isSupervisor = currentUser.role === 'supervisor' || currentUser.role === 'admin';
+  const role = (currentUser?.role || '').toLowerCase();
+  const isSupervisor = role === 'supervisor' || role === 'admin';
 
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [psList, setPsList] = useState([]);
+  const [deductions, setDeductions] = useState({ default: { levyRate: 2, adminFeeRate: 1 }, byPs: {} });
+  const [savingDeductions, setSavingDeductions] = useState(false);
+
+  useEffect(() => {
+    const loadDeductionConfig = async () => {
+      if (!isSupervisor) return;
+      try {
+        const [psRows, deductionConfig] = await Promise.all([
+          window.api.request('/ps'),
+          window.api.request('/deduction-rates')
+        ]);
+        setPsList(Array.isArray(psRows) ? psRows : []);
+        if (deductionConfig && deductionConfig.default) {
+          setDeductions(deductionConfig);
+        }
+      } catch (e) {
+        console.error('Failed to load deduction settings:', e);
+      }
+    };
+
+    loadDeductionConfig();
+  }, [isSupervisor]);
+
+  const updateDefaultRate = (field, value) => {
+    setDeductions(prev => ({
+      ...prev,
+      default: {
+        ...prev.default,
+        [field]: value
+      }
+    }));
+  };
+
+  const updatePsRate = (psCode, field, value) => {
+    setDeductions(prev => ({
+      ...prev,
+      byPs: {
+        ...prev.byPs,
+        [psCode]: {
+          levyRate: prev.byPs?.[psCode]?.levyRate ?? prev.default.levyRate,
+          adminFeeRate: prev.byPs?.[psCode]?.adminFeeRate ?? prev.default.adminFeeRate,
+          [field]: value
+        }
+      }
+    }));
+  };
+
+  const saveDeductionRates = async () => {
+    setSavingDeductions(true);
+    try {
+      const payload = {
+        default: {
+          levyRate: parseFloat(deductions.default.levyRate) || 0,
+          adminFeeRate: parseFloat(deductions.default.adminFeeRate) || 0
+        },
+        byPs: {}
+      };
+
+      for (const ps of psList) {
+        const psCode = ps.code;
+        const rates = deductions.byPs?.[psCode];
+        if (rates) {
+          payload.byPs[psCode] = {
+            levyRate: parseFloat(rates.levyRate) || 0,
+            adminFeeRate: parseFloat(rates.adminFeeRate) || 0
+          };
+        }
+      }
+
+      const savedConfig = await window.api.request('/deduction-rates', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      setDeductions(savedConfig);
+      alert('Deduction rates saved successfully');
+    } catch (e) {
+      alert('Failed to save deduction rates: ' + e.message);
+    }
+    setSavingDeductions(false);
+  };
 
   const changePassword = async () => {
     if (!pwForm.newPw || pwForm.newPw !== pwForm.confirm) {
@@ -100,6 +183,78 @@ function Settings() {
             >
               <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform ${testMode ? 'translate-x-8' : 'translate-x-1'}`} />
             </button>
+          </div>
+        </Card>
+      )}
+
+      {isSupervisor && (
+        <Card title={<>Deduction Rates by PS</>}>
+          <div className="space-y-4">
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+              <p className="font-medium mb-3">Default Rates (used when PS-specific value is not set)</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm mb-1">Levy (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={deductions.default.levyRate}
+                    onChange={e => updateDefaultRate('levyRate', e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'border-gray-300'}`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-1">Admin Fee (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={deductions.default.adminFeeRate}
+                    onChange={e => updateDefaultRate('adminFeeRate', e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'border-gray-300'}`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {psList.map(ps => {
+                const rates = deductions.byPs?.[ps.code] || {
+                  levyRate: deductions.default.levyRate,
+                  adminFeeRate: deductions.default.adminFeeRate
+                };
+                return (
+                  <div key={ps.id} className={`grid grid-cols-1 md:grid-cols-3 gap-3 items-center p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                    <div className="font-medium">{ps.name} ({ps.code})</div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={rates.levyRate}
+                      onChange={e => updatePsRate(ps.code, 'levyRate', e.target.value)}
+                      className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'border-gray-300'}`}
+                      placeholder="Levy %"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={rates.adminFeeRate}
+                      onChange={e => updatePsRate(ps.code, 'adminFeeRate', e.target.value)}
+                      className={`px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'border-gray-300'}`}
+                      placeholder="Admin Fee %"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            <div>
+              <button
+                onClick={saveDeductionRates}
+                disabled={savingDeductions}
+                className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                {savingDeductions ? 'Saving...' : 'Save Deduction Rates'}
+              </button>
+            </div>
           </div>
         </Card>
       )}

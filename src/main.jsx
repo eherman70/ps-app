@@ -106,7 +106,7 @@ window.storage = {
     try {
       // For other data, try to get from API
       const entity = this.getEntityFromKey(key);
-      if (entity) {
+      if (entity && key.includes('_')) {
         try {
           const items = await window.api.getAll(entity);
           const prefix = key.split('_')[0];
@@ -127,9 +127,9 @@ window.storage = {
   },
 
   async set(key, value) {
+    const entity = this.getEntityFromKey(key);
     try {
       // Try API first for new data
-      const entity = this.getEntityFromKey(key);
       if (entity) {
         const data = JSON.parse(value);
         if (key.includes('_')) {
@@ -146,14 +146,18 @@ window.storage = {
       }
     } catch (e) {
       console.error('Storage.set error', e);
-      // Fall back to localStorage
+      // For API-backed entities, bubble the error so callers can show it
+      if (entity) {
+        throw e;
+      }
+      // Fall back to localStorage only for non-API data
       localStorage.setItem(key, value);
     }
   },
 
   async remove(key) {
+    const entity = this.getEntityFromKey(key);
     try {
-      const entity = this.getEntityFromKey(key);
       if (entity) {
         const id = key.split('_')[1];
         await window.api.delete(entity, id);
@@ -162,6 +166,9 @@ window.storage = {
       }
     } catch (e) {
       console.error('Storage.remove error', e);
+      if (entity) {
+        throw e;
+      }
       localStorage.removeItem(key);
     }
   },

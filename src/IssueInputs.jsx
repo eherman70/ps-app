@@ -46,15 +46,27 @@ function IssueInputs() {
 
     if (!farmer || !inputType) return;
 
+    const quantity = inputType.unit === 'Fixed' ? 1 : (parseFloat(form.quantity) || 0);
+    if (quantity <= 0) {
+      alert('Enter a valid quantity');
+      return;
+    }
+
+    const totalCost = parseFloat(form.totalValue) || 0;
+    const issueDate = new Date().toISOString().slice(0, 10);
+
     try {
       await saveItem(null, {
         ...form,
+        quantity,
         farmerName: `${farmer.firstName} ${farmer.lastName}`,
         farmerNumber: farmer.farmerNumber,
         inputName: inputType.name,
         unitPrice: inputType.unitPrice,
+        totalCost,
         ps: farmer.ps,
         testMode,
+        issueDate,
         createdAt: new Date().toISOString()
       });
       alert('Input issued successfully');
@@ -196,7 +208,7 @@ function IssueInputs() {
                   {item.quantity || '-'}
                 </td>
                 <td className="px-6 py-4 text-right font-bold text-red-600 dark:text-red-400">
-                   -${parseFloat(item.totalValue).toFixed(2)}
+                   -${parseFloat(item.totalCost ?? item.totalValue ?? 0).toFixed(2)}
                 </td>
                 <td className="px-6 py-4 text-right text-gray-400">
                    <button onClick={() => handleDelete(item.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 rounded-lg transition">

@@ -240,14 +240,15 @@ async function syncGradesFromMaster() {
   try {
     console.log('Synchronizing grade prices from master list...');
     for (const g of MASTER_GRADES) {
+      const masterPrice = (g.p ?? g.price);
       const [existing] = await db.execute('SELECT id FROM grades WHERE grade_code = ?', [g.code]);
       if (existing.length > 0) {
-        await db.execute('UPDATE grades SET price = ? WHERE grade_code = ?', [g.p || g.price, g.code]);
+        await db.execute('UPDATE grades SET price = ? WHERE grade_code = ?', [masterPrice, g.code]);
       } else {
         const id = uuidv4();
         await db.execute(`INSERT INTO grades (id, name, price, description, status, grade_code, group_name, category, quality_level, grade_class, is_quality_grade, createdAt)
                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, g.code, g.p || g.price, `Master Grade ${g.code}`, 'Active', g.code, g.group, g.cat || g.category, g.q || g.quality, g.cls || g.grade_class || 'STANDARD', g.is_q ?? 1,
+          [id, g.code, masterPrice, `Master Grade ${g.code}`, 'Active', g.code, g.group, g.cat || g.category, g.q || g.quality, g.cls || g.grade_class || 'STANDARD', g.is_q ?? 1,
            new Date().toISOString().slice(0, 19).replace('T', ' ')]);
       }
     }
@@ -329,6 +330,7 @@ async function createTables() {
       category VARCHAR(50),
       quality_level VARCHAR(50),
       grade_class VARCHAR(50),
+      is_quality_grade TINYINT NOT NULL DEFAULT 1,
       price DECIMAL(10,2) NOT NULL,
       description TEXT,
       status VARCHAR(20) NOT NULL,
@@ -496,6 +498,7 @@ async function ensureColumns() {
     "ALTER TABLE grades ADD COLUMN group_name VARCHAR(100)",
     "ALTER TABLE grades ADD COLUMN category VARCHAR(50)",
     "ALTER TABLE grades ADD COLUMN quality_level VARCHAR(50)",
+    "ALTER TABLE grades ADD COLUMN is_quality_grade TINYINT NOT NULL DEFAULT 1",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_grade_code ON grades(grade_code)",
     "CREATE INDEX IF NOT EXISTS idx_grade_category ON grades(category)",
     "ALTER TABLE tickets ADD COLUMN grade_code VARCHAR(10)",
@@ -1483,6 +1486,121 @@ app.post('/api/exchange-rate', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Exchange rate error:', error);
     res.status(500).json({ error: 'Error saving exchange rate' });
+  }
+});
+
+app.get('/api/exchange-rates', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await db.execute("SELECT value FROM system_settings WHERE key='exchange_rates_by_ps'");
+    if (rows.length > 0) {
+      return res.json(JSON.parse(rows[0].value));
+    }
+    res.json({ byPs: {} });
+  } catch (error) {
+    console.error('Get exchange-rates error:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/exchange-rates', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupervisor(req.user)) return res.status(403).json({ error: 'Only Supervisors can set exchange rates' });
+    const payload = {
+      byPs: (req.body && typeof req.body.byPs === 'object') ? req.body.byPs : {}
+    };
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.execute(
+      "INSERT INTO system_settings (key, value, updatedAt) VALUES ('exchange_rates_by_ps', ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updatedAt=excluded.updatedAt",
+      [JSON.stringify(payload), now]
+    );
+    res.json(payload);
+  } catch (error) {
+    console.error('Save exchange-rates error:', error);
+    res.status(500).json({ error: 'Error saving exchange rates' });
+  }
+});
+
+app.get('/api/tzs-deductions', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await db.execute("SELECT value FROM system_settings WHERE key='tzs_deductions_by_ps'");
+    if (rows.length > 0) {
+      return res.json(JSON.parse(rows[0].value));
+    }
+    res.json({ byPs: {} });
+  } catch (error) {
+    console.error('Get tzs-deductions error:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/tzs-deductions', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupervisor(req.user)) return res.status(403).json({ error: 'Only Supervisors can set deductions' });
+    const payload = {
+      byPs: (req.body && typeof req.body.byPs === 'object') ? req.body.byPs : {}
+    };
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.execute(
+      "INSERT INTO system_settings (key, value, updatedAt) VALUES ('tzs_deductions_by_ps', ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updatedAt=excluded.updatedAt",
+      [JSON.stringify(payload), now]
+    );
+    res.json(payload);
+  } catch (error) {
+    console.error('Save tzs-deductions error:', error);
+    res.status(500).json({ error: 'Error saving deductions' });
+  }
+});
+
+// ─── DEDUCTION RATES (PER PS) ───────────────────────────────────────────────
+
+app.get('/api/deduction-rates', authenticateToken, async (req, res) => {
+  try {
+    const [rows] = await db.execute("SELECT value FROM system_settings WHERE key='deduction_rates'");
+    if (rows.length > 0) {
+      const parsed = JSON.parse(rows[0].value);
+      return res.json(parsed);
+    }
+    res.json({
+      default: { levyRate: 2, adminFeeRate: 1 },
+      byPs: {}
+    });
+  } catch (error) {
+    console.error('Get deduction rates error:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/deduction-rates', authenticateToken, async (req, res) => {
+  try {
+    if (!isSupervisor(req.user)) return res.status(403).json({ error: 'Only Supervisors can set deduction rates' });
+
+    const payload = req.body || {};
+    const safe = {
+      default: {
+        levyRate: Number(payload?.default?.levyRate ?? 2),
+        adminFeeRate: Number(payload?.default?.adminFeeRate ?? 1)
+      },
+      byPs: {}
+    };
+
+    const sourceByPs = payload?.byPs && typeof payload.byPs === 'object' ? payload.byPs : {};
+    for (const [psCode, rates] of Object.entries(sourceByPs)) {
+      safe.byPs[psCode] = {
+        levyRate: Number(rates?.levyRate ?? safe.default.levyRate),
+        adminFeeRate: Number(rates?.adminFeeRate ?? safe.default.adminFeeRate)
+      };
+    }
+
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.execute(
+      "INSERT INTO system_settings (key, value, updatedAt) VALUES ('deduction_rates', ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updatedAt=excluded.updatedAt",
+      [JSON.stringify(safe), now]
+    );
+
+    res.json(safe);
+  } catch (error) {
+    console.error('Save deduction rates error:', error);
+    res.status(500).json({ error: 'Error saving deduction rates' });
   }
 });
 

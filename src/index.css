@@ -6,3 +6,109 @@
 body {
   @apply font-sans;
 }
+
+@media print {
+  @page {
+    size: auto;
+    margin: 10mm;
+  }
+
+  body.printing-report-only * {
+    visibility: hidden !important;
+  }
+
+  body.printing-report-only .report-print-area,
+  body.printing-report-only .report-print-area * {
+    visibility: visible !important;
+  }
+
+  body.printing-report-only .report-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body.printing-payment-only * {
+    visibility: hidden !important;
+  }
+
+  body.printing-payment-only .payment-print-area,
+  body.printing-payment-only .payment-print-area * {
+    visibility: visible !important;
+  }
+
+  body.printing-payment-only .payment-print-area {
+    position: static;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body.printing-payment-only .payment-print-table-wrap {
+    overflow: visible !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 0 !important;
+  }
+
+  body.printing-payment-only .payment-print-table {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: 11px !important;
+    border-collapse: collapse !important;
+  }
+
+  body.printing-payment-only .payment-print-table thead {
+    display: table-header-group;
+  }
+
+  body.printing-payment-only .payment-print-table tfoot {
+    display: table-footer-group;
+  }
+
+  body.printing-payment-only .payment-print-table tr,
+  body.printing-payment-only .payment-print-table td,
+  body.printing-payment-only .payment-print-table th {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.printing-payment-only .payment-print-table th,
+  body.printing-payment-only .payment-print-table td {
+    border: 1px solid #d1d5db !important;
+    padding: 6px 8px !important;
+    font-weight: 500;
+  }
+
+  body.printing-payment-only .payment-print-title {
+    border-bottom: 2px solid #111827;
+    padding-bottom: 8px;
+    margin-bottom: 10px !important;
+  }
+
+  body.printing-payment-only .payment-print-signatures {
+    margin-top: 18px !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.printing-payment-only .payment-print-hide {
+    display: none !important;
+  }
+
+  body.printing-payment-only .payment-print-only {
+    display: block !important;
+    visibility: visible !important;
+  }
+}

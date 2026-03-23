@@ -23,6 +23,23 @@ function Reports() {
 
   const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
   const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
+
+  useEffect(() => {
+    const clearPrintMode = () => {
+      document.body.classList.remove('printing-report-only');
+    };
+
+    window.addEventListener('afterprint', clearPrintMode);
+    return () => {
+      clearPrintMode();
+      window.removeEventListener('afterprint', clearPrintMode);
+    };
+  }, []);
+
+  const handlePrintReport = () => {
+    document.body.classList.add('printing-report-only');
+    window.print();
+  };
   
   const toggleSale = (sale) => {
     setSelectedSales(prev => prev.includes(sale) ? prev.filter(s => s !== sale) : [...prev, sale]);
@@ -37,6 +54,9 @@ function Reports() {
     const i = inputTypes.find(type => type.id === id);
     return i ? i.name : 'Unknown';
   };
+
+  const formatUsd = (value) => `$${parseFloat(value || 0).toFixed(2)}`;
+  const formatTzs = (value) => parseFloat(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
   const exportToCSV = (filename, dataRows) => {
     const csvContent = "data:text/csv;charset=utf-8," 
@@ -75,7 +95,7 @@ function Reports() {
         getFarmerName(i.farmerId),
         i.inputName || getInputTypeName(i.inputTypeId),
         i.quantity,
-        `$${parseFloat(i.totalCost || i.totalValue || 0).toFixed(2)}`,
+        formatUsd(i.totalCost || i.totalValue || 0),
         i.ps
       ]),
       title: 'Agricultural Inputs Report'
@@ -103,7 +123,7 @@ function Reports() {
     const headers = ['Grade Code', 'Name', 'Category', 'Level', 'Bales', 'Weight (Kg)', 'Value (USD)'];
     return {
       headers,
-      rows: result.map(g => [g.code, g.name, g.category, g.level, g.bales.toString(), g.weight.toFixed(2), g.value.toFixed(2)]),
+      rows: result.map(g => [g.code, g.name, g.category, g.level, g.bales.toString(), g.weight.toFixed(2), formatUsd(g.value)]),
       title: 'Grade Distribution Report'
     };
   };
@@ -197,11 +217,11 @@ function Reports() {
       rows: data.map(p => [
         new Date(p.paymentDate || p.createdAt).toLocaleDateString(),
         getFarmerName(p.farmerId),
-        `$${parseFloat(p.tobaccoAmount || 0).toFixed(2)}`,
-        `$${parseFloat(p.inputDeduction || 0).toFixed(2)}`,
-        `$${parseFloat(p.usdBalance || 0).toFixed(2)}`,
+        formatUsd(p.tobaccoAmount || 0),
+        formatUsd(p.inputDeduction || 0),
+        formatUsd(p.usdBalance || 0),
         p.exchangeRate || '-',
-        parseFloat(p.netPayment || 0).toLocaleString(),
+        formatTzs(p.netPayment || 0),
         p.ps
       ]),
       title: 'Farmer Payment Report'
@@ -243,7 +263,7 @@ function Reports() {
     if (reportType === 'sales') {
       const headers = ['Sale', 'Market', 'Farmer', 'Bales', 'Mass', 'Value'];
       const rows = [];
-      getSalesAccordionData().forEach(s => s.farmers.forEach(f => rows.push([s.saleNumber, s.marketCenter, f.name, f.bales, f.mass.toFixed(2), f.value.toFixed(2)])));
+      getSalesAccordionData().forEach(s => s.farmers.forEach(f => rows.push([s.saleNumber, s.marketCenter, f.name, f.bales, f.mass.toFixed(2), formatUsd(f.value)])));
       exportToCSV('Sales_Detailed', [headers, ...rows]);
     } else {
       exportToCSV(currentReport.title.replace(/ /g, '_'), [currentReport.headers, ...currentReport.rows]);
@@ -267,7 +287,7 @@ function Reports() {
       <div className="flex justify-between items-center print:hidden">
         <h2 className="text-2xl font-bold">System Reports</h2>
         <div className="flex space-x-3">
-          <button onClick={() => window.print()} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg"><Printer className="w-5 h-5" /></button>
+          <button onClick={handlePrintReport} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg"><Printer className="w-5 h-5" /></button>
           <button onClick={handleExport} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium"><Download className="w-4 h-4" /> <span>Export</span></button>
         </div>
       </div>
@@ -281,7 +301,7 @@ function Reports() {
         {isSupervisor && navBtn('payments', 'Payments', Banknote)}
       </div>
 
-      <div className={`overflow-hidden rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+      <div className={`report-print-area overflow-hidden rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
         <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
           <h3 className="font-bold flex items-center space-x-2">
             <FileSpreadsheet className="w-5 h-5 text-green-600" />
@@ -307,11 +327,11 @@ function Reports() {
                 <div key={sale.saleNumber} className="border dark:border-gray-700 rounded-lg overflow-hidden">
                   <div className="bg-gray-50 dark:bg-gray-700/30 px-4 py-2 font-bold text-sm flex justify-between">
                     <span>Sale #{sale.saleNumber} - {sale.marketCenter}</span>
-                    <span>{sale.mass.toFixed(1)}kg - ${sale.value.toFixed(2)}</span>
+                    <span>{sale.mass.toFixed(1)}kg - {formatUsd(sale.value)}</span>
                   </div>
                   <table className="w-full text-xs">
                     <thead><tr className="border-b dark:border-gray-700 opacity-60"><th className="p-2 text-left">Farmer</th><th className="p-2 text-center">Bales</th><th className="p-2 text-right">Mass</th><th className="p-2 text-right">Value</th></tr></thead>
-                    <tbody>{sale.farmers.map((f, i) => (<tr key={i} className="border-b last:border-0 dark:border-gray-700"><td className="p-2 font-medium">{f.name}</td><td className="p-2 text-center">{f.bales}</td><td className="p-2 text-right">{f.mass.toFixed(1)}</td><td className="p-2 text-right">${f.value.toFixed(2)}</td></tr>))}</tbody>
+                    <tbody>{sale.farmers.map((f, i) => (<tr key={i} className="border-b last:border-0 dark:border-gray-700"><td className="p-2 font-medium">{f.name}</td><td className="p-2 text-center">{f.bales}</td><td className="p-2 text-right">{f.mass.toFixed(1)}</td><td className="p-2 text-right">{formatUsd(f.value)}</td></tr>))}</tbody>
                   </table>
                 </div>
               ))}

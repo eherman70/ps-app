@@ -9,16 +9,21 @@
     "backend": "npm run dev --prefix backend",
     "build": "vite build",
     "preview": "vite preview",
-    "electron": "electron ."
+    "electron": "electron .",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
     "lucide-react": "^0.352.0",
     "nodemon": "^3.1.14",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tailwind": "^4.0.0"
+    "tailwind": "^4.0.0",
+    "tauri": "^0.15.0"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
     "@vitejs/plugin-react": "^4.2.0",
     "autoprefixer": "^10.4.16",
     "concurrently": "^9.2.1",

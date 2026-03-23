@@ -1,468 +1,574 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useStorage } from './hooks/useStorage';
-import { Lock, Unlock, Printer, Download, DollarSign } from 'lucide-react';
+import { Download, FileText, Plus, Save, Search } from 'lucide-react';
 
 function PaymentModule() {
-  const { darkMode, currentUser } = useAppContext();
+  const { darkMode, currentUser, activePS } = useAppContext();
   const { items: farmers } = useStorage('farmer');
   const { items: tickets } = useStorage('ticket');
   const { items: inputs } = useStorage('issuedinput');
-  const { items: payments, refreshItems: refreshPayments } = useStorage('payment');
+  const { items: inputTypes } = useStorage('inputtype');
+  const { items: seasons } = useStorage('season');
 
-  const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
+  const role = (currentUser?.role || '').toLowerCase();
+  const isSupervisor = role === 'admin' || role === 'supervisor';
 
-  const [selectedFarmer, setSelectedFarmer] = useState(null);
-  const [paymentData, setPaymentData] = useState(null);
-  const [exchangeRate, setExchangeRate] = useState('');
-  const [locked, setLocked] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState('calculate'); // 'calculate' | 'history'
+  const [selectedSeason, setSelectedSeason] = useState('');
+  const [search, setSearch] = useState('');
 
-  const printRef = useRef(null);
+  const [exchangeRates, setExchangeRates] = useState({ byPs: {} });
+  const [globalRate, setGlobalRate] = useState(0);
+  const [ratePs, setRatePs] = useState('');
+  const [rateValue, setRateValue] = useState('');
+  const [savingRate, setSavingRate] = useState(false);
+
+  const [deductions, setDeductions] = useState({ byPs: {} });
+  const [deductionPs, setDeductionPs] = useState('');
+  const [showDeductionForm, setShowDeductionForm] = useState(false);
+  const [deductionForm, setDeductionForm] = useState({ name: '', amount: '', type: 'Per Farmer' });
+  const [savingDeduction, setSavingDeduction] = useState(false);
 
   useEffect(() => {
-    loadExchangeRate();
+    if (seasons.length && !selectedSeason) {
+      setSelectedSeason(seasons[0].name || seasons[0].id);
+    }
+  }, [seasons, selectedSeason]);
+
+  useEffect(() => {
+    const defaultPs = (activePS && activePS !== 'All')
+      ? activePS
+      : (currentUser?.ps && currentUser.ps !== 'All' ? currentUser.ps : '');
+    if (defaultPs) {
+      setRatePs(defaultPs);
+      setDeductionPs(defaultPs);
+    }
+  }, [activePS, currentUser]);
+
+  useEffect(() => {
+    loadConfigs();
   }, []);
 
-  const loadExchangeRate = async () => {
-    try {
-      const data = await window.api.request('/exchange-rate');
-      if (data && data.rate) {
-        setExchangeRate(String(data.rate));
-        setLocked(Boolean(data.locked));
-      }
-    } catch (e) {
-      // Fallback to localStorage
-      try {
-        const stored = localStorage.getItem('exchange_rate');
-        if (stored) {
-          const d = JSON.parse(stored);
-          setExchangeRate(String(d.rate || ''));
-          setLocked(Boolean(d.locked));
-        }
-      } catch {}
+  useEffect(() => {
+    if (ratePs) {
+      setRateValue(exchangeRates.byPs?.[ratePs] ? String(exchangeRates.byPs[ratePs]) : '');
     }
-  };
+  }, [ratePs, exchangeRates]);
 
-  const saveExchangeRate = async (lock) => {
-    if (!exchangeRate) return alert('Enter exchange rate');
-    if (!isSupervisor) return alert('Only supervisors can lock the exchange rate');
-    try {
-      await window.api.request('/exchange-rate', {
-        method: 'POST',
-        body: JSON.stringify({ rate: parseFloat(exchangeRate), locked: lock })
-      });
-      setLocked(lock);
-      if (lock) alert('Exchange rate locked successfully');
-    } catch (e) {
-      // Fallback to localStorage
-      localStorage.setItem('exchange_rate', JSON.stringify({ rate: exchangeRate, locked: lock }));
-      setLocked(lock);
-    }
-  };
+  useEffect(() => {
+    const clearPrintMode = () => {
+      document.body.classList.remove('printing-payment-only');
+    };
 
-  const calculatePayment = async (farmerId) => {
-    if (!farmerId) { setPaymentData(null); setSelectedFarmer(null); return; }
-    setLoading(true);
-    try {
-      const farmer = farmers.find(f => f.id === farmerId);
+    window.addEventListener('afterprint', clearPrintMode);
+    return () => {
+      clearPrintMode();
+      window.removeEventListener('afterprint', clearPrintMode);
+    };
+  }, []);
 
-      // Tickets for this farmer
-      const farmerTickets = tickets.filter(t => t.farmerId === farmerId);
-      const totalSales = farmerTickets.reduce((sum, t) => sum + parseFloat(t.value || t.totalValue || 0), 0);
-
-      // Inputs for this farmer — handle both totalCost and totalValue field names
-      const farmerInputs = inputs.filter(i => i.farmerId === farmerId);
-      const totalInputs = farmerInputs.reduce((sum, i) => sum + parseFloat(i.totalCost || i.totalValue || 0), 0);
-
-      const usdBalance = totalSales - totalInputs;
-      const rate = parseFloat(exchangeRate) || 1;
-      const tzsGross = usdBalance * rate;
-
-      // TZS Deductions
-      const levy = tzsGross * 0.02;      // 2% levy
-      const adminFee = tzsGross * 0.01;  // 1% admin
-      const totalDeductions = levy + adminFee;
-      const tzsNet = tzsGross - totalDeductions;
-
-      setPaymentData({
-        farmer,
-        tickets: farmerTickets,
-        inputs: farmerInputs,
-        totalSales,
-        totalInputs,
-        usdBalance,
-        exchangeRate: rate,
-        tzsGross,
-        levy,
-        adminFee,
-        totalDeductions,
-        tzsNet
-      });
-      setSelectedFarmer(farmerId);
-    } catch (e) {
-      console.error('Payment calculation error:', e);
-      alert('Error calculating payment');
-    }
-    setLoading(false);
-  };
-
-  const savePayment = async () => {
-    if (!paymentData || !isSupervisor) return;
-    setSaving(true);
-    try {
-      await window.api.create('payments', {
-        farmerId: paymentData.farmer.id,
-        pcnId: null,
-        tobaccoAmount: paymentData.totalSales,
-        inputDeduction: paymentData.totalInputs,
-        usdBalance: paymentData.usdBalance,
-        exchangeRate: paymentData.exchangeRate,
-        tzsGross: paymentData.tzsGross,
-        levy: paymentData.levy,
-        adminFee: paymentData.adminFee,
-        totalDeductions: paymentData.totalDeductions,
-        netPayment: paymentData.tzsNet,
-        paymentDate: new Date().toISOString().slice(0, 10),
-        ps: paymentData.farmer.ps
-      });
-      if (refreshPayments) refreshPayments();
-      alert('Payment saved successfully');
-      setPaymentData(null);
-      setSelectedFarmer(null);
-    } catch (e) {
-      alert('Error saving payment: ' + e.message);
-    }
-    setSaving(false);
-  };
-
-  const printSlip = () => {
+  const handlePrintPayment = () => {
+    document.body.classList.add('printing-payment-only');
     window.print();
   };
 
-  const exportPaymentsCSV = () => {
-    const psFilter = isSupervisor ? 'All' : currentUser.ps;
-    const data = psFilter === 'All' ? payments : payments.filter(p => p.ps === psFilter);
+  const loadConfigs = async () => {
+    try {
+      const [rateCfg, deductionCfg, globalRateCfg] = await Promise.all([
+        window.api.request('/exchange-rates').catch(() => ({ byPs: {} })),
+        window.api.request('/tzs-deductions').catch(() => ({ byPs: {} })),
+        window.api.request('/exchange-rate').catch(() => ({ rate: '' }))
+      ]);
+      setExchangeRates(rateCfg && rateCfg.byPs ? rateCfg : { byPs: {} });
+      setDeductions(deductionCfg && deductionCfg.byPs ? deductionCfg : { byPs: {} });
+      const gr = parseFloat(globalRateCfg?.rate || 0);
+      if (gr > 0) setGlobalRate(gr);
+    } catch (e) {
+      console.error('Failed to load payment configs:', e);
+    }
+  };
 
-    const headers = ['Date', 'Farmer #', 'Farmer Name', 'Village', 'Phone', 'MAUZO (USD)', 'Inputs (USD)', 'USD BAKI', 'Rate', 'TZS Gross', 'Levy (2%)', 'Admin (1%)', 'MALIPO HALISI (TZS)', 'PS'];
-    const rows = data.map(p => [
-      p.paymentDate,
-      p.farmerNumber || '',
-      `${p.firstName || ''} ${p.lastName || ''}`.trim(),
-      p.village || '',
-      p.phoneNumber || '',
-      parseFloat(p.tobaccoAmount || 0).toFixed(2),
-      parseFloat(p.inputDeduction || 0).toFixed(2),
-      parseFloat(p.usdBalance || 0).toFixed(2),
-      parseFloat(p.exchangeRate || 0).toFixed(2),
-      parseFloat(p.tzsGross || 0).toFixed(2),
-      parseFloat(p.levy || 0).toFixed(2),
-      parseFloat(p.adminFee || 0).toFixed(2),
-      parseFloat(p.netPayment || 0).toFixed(2),
-      p.ps || ''
+  const saveRateForPs = async () => {
+    if (!isSupervisor) return;
+    if (!ratePs) return alert('Select PS first');
+    if (!rateValue || parseFloat(rateValue) <= 0) return alert('Enter valid exchange rate');
+
+    setSavingRate(true);
+    try {
+      const next = {
+        byPs: {
+          ...(exchangeRates.byPs || {}),
+          [ratePs]: parseFloat(rateValue)
+        }
+      };
+      const saved = await window.api.request('/exchange-rates', {
+        method: 'POST',
+        body: JSON.stringify(next)
+      });
+      setExchangeRates(saved);
+    } catch (e) {
+      alert('Failed to save exchange rate: ' + e.message);
+    }
+    setSavingRate(false);
+  };
+
+  const addDeduction = async () => {
+    if (!isSupervisor) return;
+    if (!deductionPs) return alert('Select PS first');
+    if (!deductionForm.name.trim()) return alert('Enter deduction name');
+    if (!deductionForm.amount || parseFloat(deductionForm.amount) <= 0) return alert('Enter valid amount');
+
+    setSavingDeduction(true);
+    try {
+      const nextRow = {
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}`,
+        name: deductionForm.name.trim(),
+        amount: parseFloat(deductionForm.amount),
+        type: deductionForm.type
+      };
+
+      const next = {
+        byPs: {
+          ...(deductions.byPs || {}),
+          [deductionPs]: [
+            ...(deductions.byPs?.[deductionPs] || []),
+            nextRow
+          ]
+        }
+      };
+
+      const saved = await window.api.request('/tzs-deductions', {
+        method: 'POST',
+        body: JSON.stringify(next)
+      });
+      setDeductions(saved);
+      setDeductionForm({ name: '', amount: '', type: 'Per Farmer' });
+      setShowDeductionForm(false);
+    } catch (e) {
+      alert('Failed to save deduction: ' + e.message);
+    }
+    setSavingDeduction(false);
+  };
+
+  const filteredFarmers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const scoped = isSupervisor
+      ? farmers
+      : farmers.filter(f => f.ps === (activePS || currentUser.ps));
+
+    if (!q) return scoped;
+    return scoped.filter(f =>
+      `${f.farmerNumber || ''} ${f.firstName || ''} ${f.lastName || ''} ${f.ps || ''}`
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [farmers, search, isSupervisor, activePS, currentUser]);
+
+  const rows = useMemo(() => {
+    const calculateDeductionAmount = (deduction, mass) => {
+      const amount = parseFloat(deduction?.amount || 0);
+      const type = String(deduction?.type || '').toLowerCase();
+      if (type.includes('kg')) {
+        return amount * mass;
+      }
+      return amount;
+    };
+
+    return filteredFarmers.map((farmer) => {
+      const farmerTickets = tickets.filter(t => t.farmerId === farmer.id);
+      const farmerInputs = inputs.filter(i => i.farmerId === farmer.id);
+
+      const mass = farmerTickets.reduce((sum, t) => sum + parseFloat(t.mass || t.netWeight || 0), 0);
+      const sales = farmerTickets.reduce((sum, t) => sum + parseFloat(t.value || t.totalValue || 0), 0);
+
+      const inputByType = {};
+      for (const issue of farmerInputs) {
+        const typeName = issue.inputName
+          || inputTypes.find(t => t.id === issue.inputTypeId)?.name
+          || 'Other';
+        inputByType[typeName] = (inputByType[typeName] || 0) + parseFloat(issue.totalCost || issue.totalValue || 0);
+      }
+
+      const totalInputs = Object.values(inputByType).reduce((sum, value) => sum + value, 0);
+      const usdBaki = sales - totalInputs;
+      const psRate = parseFloat(exchangeRates.byPs?.[farmer.ps?.trim()] || exchangeRates.byPs?.[farmer.ps] || 0);
+      const rate = psRate > 0 ? psRate : globalRate;
+      const grossTzs = usdBaki * rate;
+
+      const psDeductions = deductions.byPs?.[farmer.ps] || [];
+      const deductionByName = {};
+      for (const deduction of psDeductions) {
+        const name = (deduction.name || 'Deduction').toUpperCase();
+        deductionByName[name] = (deductionByName[name] || 0) + calculateDeductionAmount(deduction, mass);
+      }
+      const totalTzsDeductions = Object.values(deductionByName).reduce((sum, val) => sum + val, 0);
+      const malipoHalisi = grossTzs - totalTzsDeductions;
+
+      return {
+        farmer,
+        mass,
+        sales,
+        inputByType,
+        usdBaki,
+        rate,
+        grossTzs,
+        deductionByName,
+        totalTzsDeductions,
+        malipoHalisi
+      };
+    });
+  }, [filteredFarmers, tickets, inputs, inputTypes, exchangeRates, deductions, globalRate]);
+
+  const inputColumns = useMemo(() => {
+    const set = new Set();
+    for (const row of rows) {
+      for (const col of Object.keys(row.inputByType)) set.add(col);
+    }
+    return Array.from(set);
+  }, [rows]);
+
+  const deductionColumns = useMemo(() => {
+    const set = new Set();
+    for (const row of rows) {
+      for (const col of Object.keys(row.deductionByName || {})) set.add(col);
+    }
+    return Array.from(set);
+  }, [rows]);
+
+  const totals = useMemo(() => {
+    const out = { mass: 0, sales: 0, usdBaki: 0, grossTzs: 0, malipoHalisi: 0, byType: {}, deductionByName: {} };
+    for (const row of rows) {
+      out.mass += row.mass;
+      out.sales += row.sales;
+      out.usdBaki += row.usdBaki;
+      out.grossTzs += row.grossTzs;
+      out.malipoHalisi += row.malipoHalisi;
+      for (const col of inputColumns) {
+        out.byType[col] = (out.byType[col] || 0) + (row.inputByType[col] || 0);
+      }
+      for (const col of deductionColumns) {
+        out.deductionByName[col] = (out.deductionByName[col] || 0) + (row.deductionByName[col] || 0);
+      }
+    }
+    return out;
+  }, [rows, inputColumns, deductionColumns]);
+
+  const currentDeductionRows = deductions.byPs?.[deductionPs] || [];
+
+  const selectedSeasonLabel = useMemo(() => {
+    const seasonMatch = seasons.find(s => (s.name || s.id) === selectedSeason || s.id === selectedSeason);
+    return seasonMatch?.name || selectedSeason || '-';
+  }, [seasons, selectedSeason]);
+
+  const formatUsd = (value) => `$${parseFloat(value || 0).toFixed(2)}`;
+  const formatUsdDeduction = (value) => `-$${parseFloat(value || 0).toFixed(2)}`;
+  const formatTzs = (value) => parseFloat(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const formatTzsDeduction = (value) => `-${formatTzs(value)}`;
+
+  const exportCSV = () => {
+    const headers = ['Farmer #', 'Name', 'Society', 'Mass (kg)', 'Sales (USD)', ...inputColumns.map(c => `${c} (USD)`), 'USD Baki', 'Gross TZS', ...deductionColumns, 'NET TZS'];
+    const body = rows.map(row => [
+      row.farmer.farmerNumber || '',
+      `${row.farmer.firstName || ''} ${row.farmer.lastName || ''}`.trim(),
+      row.farmer.ps || '',
+      row.mass.toFixed(2),
+      formatUsd(row.sales),
+      ...inputColumns.map(c => formatUsdDeduction(row.inputByType[c] || 0)),
+      formatUsd(row.usdBaki),
+      formatTzs(row.grossTzs),
+      ...deductionColumns.map(c => formatTzsDeduction(row.deductionByName[c] || 0)),
+      formatTzs(row.malipoHalisi)
     ]);
 
-    const csvContent = "data:text/csv;charset=utf-8,"
-      + [headers, ...rows].map(row => row.map(v => `"${(v || '').toString().replace(/"/g, '""')}"`).join(",")).join("\n");
-    const link = document.createElement("a");
-    link.setAttribute("href", encodeURI(csvContent));
-    link.setAttribute("download", `Payment_Report_${new Date().toISOString().slice(0, 10)}.csv`);
+    const csvContent = 'data:text/csv;charset=utf-8,'
+      + [headers, ...body].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const link = document.createElement('a');
+    link.href = encodeURI(csvContent);
+    link.download = `Payment_Summary_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const cardClass = `${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-6 mb-6`;
-
-  const psFilteredFarmers = isSupervisor
-    ? farmers
-    : farmers.filter(f => f.ps === currentUser.ps);
-
   return (
     <div>
-      <h3 className="text-xl font-semibold mb-6">Payment Processing</h3>
-
-      {/* Tab Navigation */}
-      <div className={`flex border-b mb-6 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        {['calculate', 'history'].map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)}
-            className={`px-6 py-3 font-medium capitalize ${activeTab === tab ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-500'}`}>
-            {tab === 'calculate' ? 'Calculate Payment' : 'Payment History'}
+      <div className="payment-print-hide flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+        <div>
+          <h3 className="text-2xl font-bold">Payment Summary</h3>
+          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} text-sm`}>USD sales → deductions → TZS conversion</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={selectedSeason}
+            onChange={(e) => setSelectedSeason(e.target.value)}
+            className={`px-3 py-2 border rounded-lg min-w-[200px] ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'}`}
+          >
+            {seasons.map(s => <option key={s.id} value={s.name || s.id}>{s.name || s.id}</option>)}
+          </select>
+          <button onClick={exportCSV} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-green-600 border-green-400">
+            <Download className="w-4 h-4" /> Excel
           </button>
-        ))}
+          <button onClick={exportCSV} className={`px-3 py-2 border rounded-lg flex items-center gap-2 ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}>
+            <Download className="w-4 h-4" /> CSV
+          </button>
+          <button onClick={handlePrintPayment} className={`px-3 py-2 border rounded-lg flex items-center gap-2 ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}>
+            <FileText className="w-4 h-4" /> PDF
+          </button>
+        </div>
       </div>
 
-      {activeTab === 'history' && (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h4 className="font-semibold">Payment History</h4>
-            <button onClick={exportPaymentsCSV}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-              <Download className="w-4 h-4" /> Export Excel/CSV
-            </button>
-          </div>
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow overflow-x-auto`}>
-            <table className="w-full text-sm">
-              <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                <tr>
-                  <th className="px-4 py-3 text-left">Date</th>
-                  <th className="px-4 py-3 text-left">Farmer</th>
-                  <th className="px-4 py-3 text-right">MAUZO (USD)</th>
-                  <th className="px-4 py-3 text-right">Inputs (USD)</th>
-                  <th className="px-4 py-3 text-right">USD BAKI</th>
-                  <th className="px-4 py-3 text-right">Rate</th>
-                  <th className="px-4 py-3 text-right font-bold">MALIPO HALISI (TZS)</th>
-                  <th className="px-4 py-3 text-left">PS</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {payments.filter(p => isSupervisor || p.ps === currentUser.ps).map(p => (
-                  <tr key={p.id} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                    <td className="px-4 py-3">{p.paymentDate}</td>
-                    <td className="px-4 py-3">{p.farmerNumber} - {p.firstName} {p.lastName}</td>
-                    <td className="px-4 py-3 text-right">${parseFloat(p.tobaccoAmount || 0).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right text-red-500">-${parseFloat(p.inputDeduction || 0).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right">${parseFloat(p.usdBalance || 0).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right">{parseFloat(p.exchangeRate || 0).toFixed(0)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-green-600">{parseFloat(p.netPayment || 0).toLocaleString()} TZS</td>
-                    <td className="px-4 py-3">{p.ps}</td>
-                  </tr>
-                ))}
-                {payments.length === 0 && <tr><td colSpan="8" className="px-4 py-8 text-center text-gray-500">No payment records yet</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <div className="payment-print-area">
+      <div className="payment-print-hide grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl border p-4`}>
+          <h4 className="font-semibold mb-2">Exchange Rate (USD → TZS) per PS</h4>
+          <label className="text-sm block mb-1">Select PS</label>
+          <select
+            value={ratePs}
+            onChange={(e) => setRatePs(e.target.value)}
+            className={`w-full px-3 py-2 border rounded-lg mb-3 ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+          >
+            <option value="">Choose a Primary Society...</option>
+            {[...new Set(farmers.map(f => f.ps).filter(Boolean))].map(ps => <option key={ps} value={ps}>{ps}</option>)}
+          </select>
 
-      {activeTab === 'calculate' && (
-        <>
-          {/* Exchange Rate Section */}
-          <div className={cardClass}>
-            <h4 className="font-semibold mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-600" /> Exchange Rate (USD → TZS)</h4>
-            <div className="flex items-center space-x-4">
+          {ratePs && (
+            <div className="flex gap-2 items-end">
               <div className="flex-1">
-                <label className="block mb-2 text-sm">Rate (TZS per 1 USD) *</label>
+                <label className="text-sm block mb-1">Rate (TZS)</label>
                 <input
                   type="number"
                   step="0.01"
-                  value={exchangeRate}
-                  onChange={(e) => setExchangeRate(e.target.value)}
-                  disabled={locked}
-                  className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'} ${locked ? 'opacity-50' : ''}`}
-                  placeholder="e.g., 2650"
+                  value={rateValue}
+                  onChange={(e) => setRateValue(e.target.value)}
+                  className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
                 />
               </div>
               {isSupervisor && (
-                !locked ? (
-                  <button onClick={() => saveExchangeRate(true)}
-                    className="mt-7 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
-                    <Lock className="w-4 h-4" /> Lock Rate
-                  </button>
-                ) : (
-                  <button onClick={() => saveExchangeRate(false)}
-                    className="mt-7 px-6 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 flex items-center gap-2">
-                    <Unlock className="w-4 h-4" /> Unlock Rate
-                  </button>
-                )
+                <button
+                  onClick={saveRateForPs}
+                  disabled={savingRate}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" /> {savingRate ? 'Saving...' : 'Save'}
+                </button>
               )}
             </div>
-            {locked && <p className="text-sm text-green-600 mt-2">✓ Exchange rate is locked at {parseFloat(exchangeRate).toLocaleString()} TZS/USD</p>}
-            {!locked && !isSupervisor && <p className="text-sm text-yellow-600 mt-2">⚠ Exchange rate must be locked by a supervisor before payment</p>}
-          </div>
+          )}
+        </div>
 
-          {/* Farmer Selection */}
-          <div className={cardClass}>
-            <h4 className="font-semibold mb-4">Select Farmer for Payment</h4>
-            <div className="flex items-center space-x-4">
-              <div className="flex-1">
-                <select
-                  value={selectedFarmer || ''}
-                  onChange={(e) => calculatePayment(e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
-                  disabled={!locked}
+        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl border p-4`}>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-semibold">TZS Deductions per PS</h4>
+            {isSupervisor && (
+              <button onClick={() => setShowDeductionForm(v => !v)} className={`px-3 py-1.5 rounded-lg border flex items-center gap-1 ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}>
+                <Plus className="w-4 h-4" /> Add
+              </button>
+            )}
+          </div>
+          <label className="text-sm block mb-1">Filter by PS</label>
+          <select
+            value={deductionPs}
+            onChange={(e) => setDeductionPs(e.target.value)}
+            className={`w-full px-3 py-2 border rounded-lg mb-3 ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+          >
+            <option value="">Choose PS...</option>
+            {[...new Set(farmers.map(f => f.ps).filter(Boolean))].map(ps => <option key={ps} value={ps}>{ps}</option>)}
+          </select>
+
+          {showDeductionForm && isSupervisor && (
+            <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg p-3 mb-3`}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="md:col-span-2">
+                  <label className="text-sm block mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={deductionForm.name}
+                    onChange={(e) => setDeductionForm(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g. Levy, Contribution"
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'border-gray-300'}`}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm block mb-1">Amount (TZS)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={deductionForm.amount}
+                    onChange={(e) => setDeductionForm(prev => ({ ...prev, amount: e.target.value }))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'border-gray-300'}`}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm block mb-1">Type</label>
+                  <select
+                    value={deductionForm.type}
+                    onChange={(e) => setDeductionForm(prev => ({ ...prev, type: e.target.value }))}
+                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'border-gray-300'}`}
+                  >
+                    <option value="Per Farmer">Per Farmer</option>
+                    <option value="Per Kg">Per Kg</option>
+                  </select>
+                </div>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={addDeduction}
+                  disabled={savingDeduction}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
                 >
-                  <option value="">Select Farmer</option>
-                  {psFilteredFarmers.map(f => (
-                    <option key={f.id} value={f.id}>
-                      {f.farmerNumber} - {f.firstName} {f.lastName} ({f.village})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {!locked && <p className="text-sm text-yellow-600">Lock exchange rate first</p>}
-            </div>
-          </div>
-
-          {loading && (
-            <div className={cardClass}><p className="text-center">Calculating payment...</p></div>
-          )}
-
-          {paymentData && !loading && (
-            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow`} ref={printRef}>
-              {/* Print Header - only shown on print */}
-              <div className="hidden print:block p-8 border-b-2 border-black mb-4 text-center">
-                <h1 className="text-2xl font-bold uppercase">PRIMARY SOCIETY — PAYMENT SLIP</h1>
-                <p className="text-sm mt-1">Date: {new Date().toLocaleDateString()} | PS: {paymentData.farmer.ps}</p>
-              </div>
-
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <h4 className="font-semibold text-lg">Payment Summary</h4>
-                  <div className="flex gap-3 print:hidden">
-                    {isSupervisor && (
-                      <button onClick={savePayment} disabled={saving}
-                        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
-                        {saving ? 'Saving...' : 'Save Payment'}
-                      </button>
-                    )}
-                    <button onClick={printSlip}
-                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
-                      <Printer className="w-4 h-4" /> Print Slip
-                    </button>
-                  </div>
-                </div>
-
-                {/* Farmer Info */}
-                <div className={`p-4 rounded-lg mb-4 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                  <p className="font-semibold text-lg">{paymentData.farmer.farmerNumber} — {paymentData.farmer.firstName} {paymentData.farmer.middleName || ''} {paymentData.farmer.lastName}</p>
-                  <div className="grid grid-cols-3 gap-2 text-sm mt-1 text-gray-500">
-                    <span>Village: {paymentData.farmer.village}</span>
-                    <span>Phone: {paymentData.farmer.phoneNumber || 'N/A'}</span>
-                    <span>PS: {paymentData.farmer.ps}</span>
-                  </div>
-                </div>
-
-                {/* Sales Table */}
-                <div className="mb-6">
-                  <h5 className="font-semibold mb-2">Tobacco Sales (USD)</h5>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
-                        <tr>
-                          <th className="px-3 py-2 text-left">Ticket #</th>
-                          <th className="px-3 py-2 text-left">Grade</th>
-                          <th className="px-3 py-2 text-left">Mass (Kg)</th>
-                          <th className="px-3 py-2 text-left">Sale #</th>
-                          <th className="px-3 py-2 text-right">Value (USD)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {paymentData.tickets.map(t => (
-                          <tr key={t.id}>
-                            <td className="px-3 py-2">{t.ticketNumber}</td>
-                            <td className="px-3 py-2">{t.gradeName}</td>
-                            <td className="px-3 py-2">{t.mass || t.netWeight}</td>
-                            <td className="px-3 py-2">{t.saleNumber}</td>
-                            <td className="px-3 py-2 text-right">${parseFloat(t.value || t.totalValue || 0).toFixed(2)}</td>
-                          </tr>
-                        ))}
-                        <tr className="font-semibold border-t-2">
-                          <td colSpan="4" className="px-3 py-2 text-right">Total (MAUZO):</td>
-                          <td className="px-3 py-2 text-right">${paymentData.totalSales.toFixed(2)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Inputs Table */}
-                <div className="mb-6">
-                  <h5 className="font-semibold mb-2">Inputs & Cash Advances (USD)</h5>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
-                        <tr>
-                          <th className="px-3 py-2 text-left">Date</th>
-                          <th className="px-3 py-2 text-left">Input</th>
-                          <th className="px-3 py-2 text-left">Quantity</th>
-                          <th className="px-3 py-2 text-right">Value (USD)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {paymentData.inputs.map(i => (
-                          <tr key={i.id}>
-                            <td className="px-3 py-2">{new Date(i.issueDate || i.createdAt).toLocaleDateString()}</td>
-                            <td className="px-3 py-2">{i.inputName || i.name}</td>
-                            <td className="px-3 py-2">{i.quantity || '-'}</td>
-                            <td className="px-3 py-2 text-right">${parseFloat(i.totalCost || i.totalValue || 0).toFixed(2)}</td>
-                          </tr>
-                        ))}
-                        {paymentData.inputs.length === 0 && (
-                          <tr><td colSpan="4" className="px-3 py-2 text-center text-gray-500">No inputs recorded</td></tr>
-                        )}
-                        <tr className="font-semibold border-t-2">
-                          <td colSpan="3" className="px-3 py-2 text-right">Total Inputs:</td>
-                          <td className="px-3 py-2 text-right">${paymentData.totalInputs.toFixed(2)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Payment Calculation Summary */}
-                <div className={`p-6 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-blue-50'} border ${darkMode ? 'border-gray-600' : 'border-blue-200'}`}>
-                  <h5 className="font-semibold mb-4 text-base">Payment Calculation</h5>
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span>Total Tobacco Sales (MAUZO):</span>
-                      <span className="font-semibold">${paymentData.totalSales.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-red-600">
-                      <span>Less: Inputs & Cash Advances:</span>
-                      <span className="font-semibold">-${paymentData.totalInputs.toFixed(2)}</span>
-                    </div>
-                    <div className="border-t pt-2 flex justify-between font-semibold">
-                      <span>USD Balance (BAKI):</span>
-                      <span className="text-lg">${paymentData.usdBalance.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-gray-500">
-                      <span>Exchange Rate:</span>
-                      <span>1 USD = {paymentData.exchangeRate.toLocaleString()} TZS</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span>TZS Gross:</span>
-                      <span className="font-semibold">{paymentData.tzsGross.toLocaleString(undefined, {maximumFractionDigits: 2})} TZS</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-red-600">
-                      <span>Less: Levy (2%):</span>
-                      <span>-{paymentData.levy.toLocaleString(undefined, {maximumFractionDigits: 2})} TZS</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-red-600">
-                      <span>Less: Admin Fee (1%):</span>
-                      <span>-{paymentData.adminFee.toLocaleString(undefined, {maximumFractionDigits: 2})} TZS</span>
-                    </div>
-                    <div className="border-t-2 pt-3 flex justify-between items-center">
-                      <span className="font-bold text-lg">Net Payment (MALIPO HALISI):</span>
-                      <span className="font-bold text-2xl text-green-600">{paymentData.tzsNet.toLocaleString(undefined, {maximumFractionDigits: 2})} TZS</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Print footer */}
-                <div className="hidden print:block mt-8 pt-6 border-t grid grid-cols-2 gap-8 text-sm">
-                  <div>
-                    <p className="font-semibold mb-6">Farmer Signature:</p>
-                    <div className="border-b border-black w-48"></div>
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-6">Authorized By:</p>
-                    <div className="border-b border-black w-48"></div>
-                  </div>
-                </div>
+                  {savingDeduction ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setShowDeductionForm(false); setDeductionForm({ name: '', amount: '', type: 'Per Farmer' }); }}
+                  className={`px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-gray-200'}`}
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           )}
 
-          {!paymentData && !loading && locked && (
-            <div className={`${cardClass} text-center text-gray-500`}>
-              Select a farmer above to calculate their payment
+          {currentDeductionRows.length === 0 ? (
+            <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} text-sm text-center py-4`}>No TZS deductions for this PS</p>
+          ) : (
+            <div className="space-y-2 max-h-40 overflow-auto">
+              {currentDeductionRows.map(row => (
+                <div key={row.id} className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg px-3 py-2 flex justify-between text-sm`}>
+                  <span>{row.name}</span>
+                  <span>{parseFloat(row.amount || 0).toLocaleString()} TZS ({row.type})</span>
+                </div>
+              ))}
             </div>
           )}
-        </>
+        </div>
+      </div>
+
+      {globalRate > 0 && (
+        <div className={`payment-print-hide ${darkMode ? 'bg-blue-900/20 border-blue-700 text-blue-300' : 'bg-blue-50 border-blue-300 text-blue-700'} border rounded-lg p-3 mb-4`}>
+          ℹ Using global fallback exchange rate: <strong>{globalRate.toLocaleString()} TZS</strong> for farmers without a PS-specific rate.
+        </div>
       )}
+
+      <div className="payment-print-hide grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
+        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl border p-4`}>
+          <p className="text-xs uppercase tracking-wide text-gray-500">Sales (USD)</p>
+          <p className="text-3xl font-bold text-blue-600">{formatUsd(totals.sales)}</p>
+        </div>
+        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl border p-4`}>
+          <p className="text-xs uppercase tracking-wide text-gray-500">Inputs (USD)</p>
+          <p className="text-3xl font-bold text-orange-600">{formatUsdDeduction(Object.values(totals.byType).reduce((s, v) => s + v, 0))}</p>
+        </div>
+        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl border p-4`}>
+          <p className="text-xs uppercase tracking-wide text-gray-500">USD Baki</p>
+          <p className={`text-3xl font-bold ${totals.usdBaki < 0 ? 'text-blue-500' : 'text-green-600'}`}>{formatUsd(totals.usdBaki)}</p>
+        </div>
+        <div className="rounded-xl border p-4 bg-emerald-700 border-emerald-700 text-white">
+          <p className="text-xs uppercase tracking-wide text-emerald-100">Malipo Halisi (TZS)</p>
+          <p className="text-3xl font-bold">{formatTzs(totals.malipoHalisi)}</p>
+        </div>
+      </div>
+
+      {!exchangeRates.byPs?.[ratePs] && !globalRate && (
+        <div className={`payment-print-hide ${darkMode ? 'bg-yellow-900/20 border-yellow-700 text-yellow-300' : 'bg-yellow-50 border-yellow-300 text-yellow-700'} border rounded-lg p-3 mb-4`}>
+          ⚠ No exchange rate set. Enter and save a rate above to see TZS calculations.
+        </div>
+      )}
+
+      <div className="payment-print-hide mb-3 max-w-md relative">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search farmers, society..."
+          className={`w-full pl-9 pr-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'border-gray-300'}`}
+        />
+      </div>
+
+      <div className="payment-print-only payment-print-title hidden mb-4 text-black">
+        <h2 className="text-xl font-bold">Tobacco Sales - Payments Report</h2>
+        <p className="text-sm mt-1">Season: {selectedSeasonLabel}</p>
+      </div>
+
+      <div className={`payment-print-table-wrap ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-xl overflow-x-auto`}>
+        <table className="payment-print-table w-full text-xs min-w-[1100px]">
+          <thead>
+            <tr>
+              <th className="px-3 py-2 text-left bg-emerald-700 text-white font-semibold">Farmer #</th>
+              <th className="px-3 py-2 text-left bg-emerald-700 text-white font-semibold">Name</th>
+              <th className="px-3 py-2 text-left bg-emerald-700 text-white font-semibold">Society</th>
+              <th className="px-3 py-2 text-right bg-emerald-700 text-white font-semibold">Mass (kg)</th>
+              <th className="px-3 py-2 text-right bg-emerald-700 text-white font-semibold">Sales (USD)</th>
+              {inputColumns.map(col => (
+                <th key={col} className="px-3 py-2 text-right bg-amber-700 text-white font-semibold">{col} (USD)</th>
+              ))}
+              <th className="px-3 py-2 text-right bg-emerald-600 text-white font-semibold">USD Baki</th>
+              <th className="px-3 py-2 text-right bg-violet-700 text-white font-semibold">Gross TZS</th>
+              {deductionColumns.map(col => (
+                <th key={col} className="px-3 py-2 text-right bg-violet-700 text-white font-semibold">{col}</th>
+              ))}
+              <th className="px-3 py-2 text-right bg-emerald-950 text-white font-semibold">NET TZS</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            {rows.map((row) => (
+              <tr key={row.farmer.id} className={darkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}>
+                <td className="px-3 py-2">{row.farmer.farmerNumber || '-'}</td>
+                <td className="px-3 py-2">{`${row.farmer.firstName || ''} ${row.farmer.lastName || ''}`.trim()}</td>
+                <td className="px-3 py-2">{row.farmer.ps}</td>
+                <td className="px-3 py-2 text-right">{row.mass.toFixed(2)}</td>
+                <td className="px-3 py-2 text-right">{formatUsd(row.sales)}</td>
+                {inputColumns.map(col => (
+                  <td key={`${row.farmer.id}-${col}`} className="px-3 py-2 text-right text-orange-700">
+                    {formatUsdDeduction(row.inputByType[col] || 0)}
+                  </td>
+                ))}
+                <td className="px-3 py-2 text-right font-medium">{formatUsd(row.usdBaki)}</td>
+                <td className="px-3 py-2 text-right">{formatTzs(row.grossTzs)}</td>
+                {deductionColumns.map(col => (
+                  <td key={`${row.farmer.id}-${col}-tzs`} className="px-3 py-2 text-right text-purple-700">
+                    {formatTzsDeduction(row.deductionByName[col] || 0)}
+                  </td>
+                ))}
+                <td className="px-3 py-2 text-right font-semibold">{formatTzs(row.malipoHalisi)}</td>
+              </tr>
+            ))}
+            <tr className="bg-slate-900 text-white font-bold">
+              <td className="px-3 py-2" colSpan={3}>TOTAL</td>
+              <td className="px-3 py-2 text-right">{totals.mass.toFixed(2)}</td>
+              <td className="px-3 py-2 text-right">{formatUsd(totals.sales)}</td>
+              {inputColumns.map(col => (
+                <td key={`total-${col}`} className="px-3 py-2 text-right">{formatUsdDeduction(totals.byType[col] || 0)}</td>
+              ))}
+              <td className="px-3 py-2 text-right">{formatUsd(totals.usdBaki)}</td>
+              <td className="px-3 py-2 text-right">{formatTzs(totals.grossTzs)}</td>
+              {deductionColumns.map(col => (
+                <td key={`total-ded-${col}`} className="px-3 py-2 text-right">{formatTzsDeduction(totals.deductionByName[col] || 0)}</td>
+              ))}
+              <td className="px-3 py-2 text-right">{formatTzs(totals.malipoHalisi)}</td>
+            </tr>
+            {rows.length === 0 && (
+              <tr>
+                <td className="px-3 py-8 text-center text-gray-500" colSpan={8 + inputColumns.length + deductionColumns.length}>No farmer rows to display</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="payment-print-only payment-print-signatures hidden mt-10 text-black">
+        <div className="grid grid-cols-2 gap-10">
+          <div>
+            <p className="text-sm mb-10">Prepared By:</p>
+            <div className="border-t border-black pt-1 text-sm">Name & Signature</div>
+          </div>
+          <div>
+            <p className="text-sm mb-10">Approved By:</p>
+            <div className="border-t border-black pt-1 text-sm">Name & Signature</div>
+          </div>
+        </div>
+      </div>
+      </div>
     </div>
   );
 }
