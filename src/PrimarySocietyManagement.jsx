@@ -44,12 +44,11 @@ export default function PrimarySocietyManagement() {
     await deleteItem(id);
   };
 
-  // Only allow Admins to manage societies
-  if (currentUser.role !== 'Admin') {
+  // Only allow admins to manage societies
+  if (currentUser.role !== 'admin') {
     return (
-      <div className="p-6 bg-white rounded-lg shadow">
-        <h3 className="text-xl font-semibold mb-4">Primary Societies</h3>
-        <p className="text-gray-600">Only Admin users can manage societies.</p>
+      <div className="flex flex-col items-center justify-center h-64">
+        <p className="text-gray-600">Only admin users can manage societies.</p>
       </div>
     );
   }

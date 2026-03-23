@@ -4,7 +4,7 @@ import { Moon, Sun, FlaskConical, Lock, User, Save, CheckCircle } from 'lucide-r
 
 function Settings() {
   const { currentUser, darkMode, toggleDarkMode, testMode, setTestMode } = useAppContext();
-  const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
+  const isSupervisor = currentUser.role === 'supervisor' || currentUser.role === 'admin';
 
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
   const [saving, setSaving] = useState(false);

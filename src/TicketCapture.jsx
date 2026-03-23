@@ -11,7 +11,7 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
   const { items: marketCenters } = useStorage('marketcenter');
   const { items: saleNumbers } = useStorage('salenumber');
 
-  const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
+  const isSupervisor = currentUser.role === 'supervisor' || currentUser.role === 'admin';
   const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
 
   const [showForm, setShowForm] = useState(false);
@@ -144,7 +144,7 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
     // If duplicate and not in update mode, block non-supervisors
     if (duplicateTicket && !isUpdateMode) {
       if (!isSupervisor) {
-        alert('This ticket already exists. Contact a Supervisor to update it.');
+        alert('This ticket already exists. Contact a supervisor to update it.');
         return;
       }
       alert('Please click "Update Existing Ticket" to update this ticket.');
@@ -237,7 +237,7 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
   };
 
   const handleDelete = async (id) => {
-    if (!isSupervisor) return alert('Only Supervisors can delete tickets');
+    if (!isSupervisor) return alert('Only supervisors can delete tickets');
     if (confirm('Delete ticket?')) {
       try {
         await window.api.delete('tickets', id);
@@ -393,7 +393,7 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber }) 
                         </div>
                       )}
                       {!isSupervisor && (
-                        <p className="text-sm text-red-700 dark:text-red-400 mt-1 font-medium">Contact a Supervisor to update this ticket.</p>
+                        <p className="text-sm text-red-700 dark:text-red-400 mt-1 font-medium">Contact a supervisor to update this ticket.</p>
                       )}
                     </div>
                   </div>

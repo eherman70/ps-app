@@ -9,7 +9,7 @@ import PrimarySocietyManagement from '../PrimarySocietyManagement';
 
 function RegistrationModule() {
   const { currentUser, darkMode } = useAppContext();
-  const isAdminOrSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
+  const isAdminOrSupervisor = currentUser.role === 'admin' || currentUser.role === 'supervisor';
   const [activeTab, setActiveTab] = useState(isAdminOrSupervisor ? 'seasons' : 'farmers');
 
   const tabs = [

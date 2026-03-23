@@ -8,7 +8,7 @@ function UserManagement() {
   const { items, loading, saveItem, deleteItem } = useStorage('user');
   const { items: societies } = useStorage('ps');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ username: '', password: '', fullName: '', role: 'Capture Clerk', ps: '' });
+  const [form, setForm] = useState({ username: '', password: '', fullName: '', role: 'clerk', ps: '' });
   const [editing, setEditing] = useState(null);
 
   const handleSubmit = async () => {
@@ -29,7 +29,7 @@ function UserManagement() {
   };
 
   const resetForm = () => {
-    setForm({ username: '', password: '', fullName: '', role: 'Capture Clerk', ps: '' });
+    setForm({ username: '', password: '', fullName: '', role: 'clerk', ps: '' });
     setEditing(null);
     setShowForm(false);
   };
@@ -109,9 +109,9 @@ function UserManagement() {
                 onChange={(e) => setForm({...form, role: e.target.value})}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
-                <option>Capture Clerk</option>
-                <option>Supervisor</option>
-                <option>Admin</option>
+                <option value="clerk">clerk</option>
+                <option value="supervisor">supervisor</option>
+                <option value="admin">admin</option>
               </select>
             </div>
 
@@ -123,7 +123,7 @@ function UserManagement() {
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
                 <option value="">-- Select Society --</option>
-                <option value="All">All Societies (Admin Only)</option>
+                <option value="All">All Societies (admin Only)</option>
                 {societies?.map(s => <option key={s.id} value={s.code}>{s.name} ({s.code})</option>)}
               </select>
             </div>

@@ -191,11 +191,11 @@ function Dashboard() {
           <div className="flex justify-between items-center text-xs mt-2">
             <div className="flex items-center space-x-2">
               <span className="w-3 h-3 rounded-full bg-blue-500"></span>
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Clerks</span>
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>clerks</span>
             </div>
             <div className="flex items-center space-x-2">
               <span className="w-3 h-3 rounded-full bg-teal-500"></span>
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Supervisors</span>
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>supervisors</span>
             </div>
           </div>
         </div>

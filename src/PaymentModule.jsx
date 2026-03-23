@@ -10,7 +10,7 @@ function PaymentModule() {
   const { items: inputs } = useStorage('issuedinput');
   const { items: payments, refreshItems: refreshPayments } = useStorage('payment');
 
-  const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
+  const isSupervisor = currentUser.role === 'supervisor' || currentUser.role === 'admin';
 
   const [selectedFarmer, setSelectedFarmer] = useState(null);
   const [paymentData, setPaymentData] = useState(null);
@@ -48,7 +48,7 @@ function PaymentModule() {
 
   const saveExchangeRate = async (lock) => {
     if (!exchangeRate) return alert('Enter exchange rate');
-    if (!isSupervisor) return alert('Only Supervisors can lock the exchange rate');
+    if (!isSupervisor) return alert('Only supervisors can lock the exchange rate');
     try {
       await window.api.request('/exchange-rate', {
         method: 'POST',
@@ -270,7 +270,7 @@ function PaymentModule() {
               )}
             </div>
             {locked && <p className="text-sm text-green-600 mt-2">✓ Exchange rate is locked at {parseFloat(exchangeRate).toLocaleString()} TZS/USD</p>}
-            {!locked && !isSupervisor && <p className="text-sm text-yellow-600 mt-2">⚠ Exchange rate must be locked by a Supervisor before payment</p>}
+            {!locked && !isSupervisor && <p className="text-sm text-yellow-600 mt-2">⚠ Exchange rate must be locked by a supervisor before payment</p>}
           </div>
 
           {/* Farmer Selection */}

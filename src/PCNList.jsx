@@ -8,7 +8,7 @@ function PCNList() {
   const { items: pcns, loading, saveItem, deleteItem, refreshItems } = useStorage('pcn');
   const { items: tickets, refreshItems: refreshTickets } = useStorage('ticket');
 
-  const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
+  const isSupervisor = currentUser.role === 'supervisor' || currentUser.role === 'admin';
   const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
 
   const [showForm, setShowForm] = useState(false);
@@ -114,7 +114,7 @@ function PCNList() {
   };
 
   const closePCN = async (pcn) => {
-    if (!isSupervisor) return alert('Only Supervisors can close PCNs');
+    if (!isSupervisor) return alert('Only supervisors can close PCNs');
     if (!confirm('Close this PCN? This action cannot be undone.')) return;
     try {
       await window.api.request(`/pcns/${pcn.id}`, {
@@ -129,7 +129,7 @@ function PCNList() {
   };
 
   const approvePCN = async (pcn) => {
-    if (!isSupervisor) return alert('Only Supervisors can approve PCNs');
+    if (!isSupervisor) return alert('Only supervisors can approve PCNs');
     if (pcn.status !== 'Closed') return alert('PCN must be closed before approval');
     if (!confirm('Approve this PCN?')) return;
     try {
@@ -145,7 +145,7 @@ function PCNList() {
   };
 
   const deletePCN = async (pcn) => {
-    if (!isSupervisor) return alert('Only Supervisors can delete PCNs');
+    if (!isSupervisor) return alert('Only supervisors can delete PCNs');
     if (pcn.status === 'Approved') return alert('Cannot delete an approved PCN');
     if (!confirm('Delete this PCN? Tickets will be released.')) return;
     try {

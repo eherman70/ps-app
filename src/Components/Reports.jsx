@@ -20,7 +20,7 @@ function Reports() {
   const [selectedSales, setSelectedSales] = useState([]);
   const [showSalesMenu, setShowSalesMenu] = useState(false);
 
-  const activePSValue = currentUser.role === 'Admin' ? (activePS || 'All') : currentUser.ps;
+  const activePSValue = currentUser.role === 'admin' ? (activePS || 'All') : currentUser.ps;
   
   const toggleSale = (sale) => {
     setSelectedSales(prev => prev.includes(sale) ? prev.filter(s => s !== sale) : [...prev, sale]);

@@ -20,7 +20,7 @@ export default function Header() {
       <div className="flex items-center space-x-4 ml-6">
         {testMode && <span className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-xl">TEST MODE</span>}
 
-        {currentUser.role === 'Supervisor' && (
+        {currentUser.role === 'supervisor' && (
           <button
             onClick={() => setTestMode(!testMode)}
             className={`px-5 py-3 rounded-2xl text-sm font-semibold transition-all ${testMode ? 'bg-yellow-600 text-white' : darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-green-50 shadow-sm hover:shadow-md text-gray-700'}`}
