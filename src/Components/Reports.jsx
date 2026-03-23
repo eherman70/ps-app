@@ -12,6 +12,7 @@ function Reports() {
   const { items: inputTypes } = useStorage('inputtype');
   const { items: tickets } = useStorage('ticket');
   const { items: payments } = useStorage('payment');
+  const { items: grades } = useStorage('grade');
 
   const [reportType, setReportType] = useState('sales'); 
   const [seasonFilter, setSeasonFilter] = useState('');
@@ -133,21 +134,56 @@ function Reports() {
   };
 
   const renderPremiumSummary = () => {
-    const pTicks = tickets.filter(t => t.grade_code && t.grade_code.endsWith('OF') && (activePSValue === 'All' || t.ps === activePSValue));
-    const sTicks = tickets.filter(t => t.grade_code && t.grade_code.includes('O') && !t.grade_code.endsWith('OF') && (activePSValue === 'All' || t.ps === activePSValue));
+    const isQuality = (t) => {
+      const g = grades.find(gr => gr.grade_code === t.grade_code);
+      return g ? g.is_quality_grade === 1 : true;
+    };
+
+    const qTicks = tickets.filter(t => isQuality(t) && (activePSValue === 'All' || t.ps === activePSValue));
+    const pTicks = qTicks.filter(t => t.grade_code && t.grade_code.endsWith('OF'));
+    const sTicks = qTicks.filter(t => t.grade_code && t.grade_code.includes('O') && !t.grade_code.endsWith('OF'));
+    const rTicks = qTicks.filter(t => t.grade_code === 'REJ' || t.quality_level === 'Reject');
+    
+    const canTicks = tickets.filter(t => t.grade_code === 'CAN' && (activePSValue === 'All' || t.ps === activePSValue));
+    const witTicks = tickets.filter(t => t.grade_code === 'WIT' && (activePSValue === 'All' || t.ps === activePSValue));
 
     const pStat = { count: pTicks.length, weight: pTicks.reduce((s,t) => s + parseFloat(t.netWeight || t.mass || 0), 0) };
     const sStat = { count: sTicks.length, weight: sTicks.reduce((s,t) => s + parseFloat(t.netWeight || t.mass || 0), 0) };
+    const rStat = { count: rTicks.length, weight: rTicks.reduce((s,t) => s + parseFloat(t.netWeight || t.mass || 0), 0) };
+
+    const pRatio = pStat.count + sStat.count > 0 ? (pStat.count / (pStat.count + sStat.count) * 100).toFixed(1) : 0;
+    const rRate = qTicks.length > 0 ? (rStat.count / qTicks.length * 100).toFixed(1) : 0;
 
     return (
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 rounded-lg">
-          <p className="text-[10px] font-bold text-amber-800 uppercase">Premium L-OF</p>
-          <p className="text-xl font-black text-amber-600">{pStat.count} Bales / {pStat.weight.toFixed(1)}kg</p>
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-200 dark:border-amber-800 rounded-2xl shadow-sm">
+            <p className="text-[10px] font-black text-amber-800 dark:text-amber-400 uppercase tracking-widest mb-1">Premium L-OF</p>
+            <p className="text-2xl font-black text-amber-600">{pStat.count} Bales / {pStat.weight.toFixed(1)}kg</p>
+          </div>
+          <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl shadow-sm">
+            <p className="text-[10px] font-bold text-gray-800 dark:text-gray-400 uppercase tracking-widest mb-1">Standard L-O</p>
+            <p className="text-2xl font-black text-gray-600">{sStat.count} Bales / {sStat.weight.toFixed(1)}kg</p>
+          </div>
+          <div className="p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-800 rounded-2xl shadow-sm">
+            <p className="text-[10px] font-bold text-rose-800 dark:text-rose-400 uppercase tracking-widest mb-1">Reject (REJ)</p>
+            <p className="text-2xl font-black text-rose-600">{rStat.count} Bales ({rRate}%)</p>
+          </div>
+          <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 rounded-2xl shadow-sm">
+            <p className="text-[10px] font-bold text-green-800 dark:text-green-400 uppercase tracking-widest mb-1">Production Ratio</p>
+            <p className="text-2xl font-black text-green-600">{pRatio}% Premium</p>
+          </div>
         </div>
-        <div className="p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 rounded-lg">
-          <p className="text-[10px] font-bold text-gray-800 uppercase">Standard L-O</p>
-          <p className="text-xl font-black text-gray-600">{sStat.count} Bales / {sStat.weight.toFixed(1)}kg</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-3 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 rounded-xl flex justify-between items-center">
+            <span className="text-sm font-bold text-orange-700 dark:text-orange-400">Total Cancelled (CAN)</span>
+            <span className="text-xl font-black text-orange-600">{canTicks.length} Bales</span>
+          </div>
+          <div className="p-3 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 rounded-xl flex justify-between items-center">
+            <span className="text-sm font-bold text-orange-700 dark:text-orange-400">Total Withdrawn (WIT)</span>
+            <span className="text-xl font-black text-orange-600">{witTicks.length} Bales</span>
+          </div>
         </div>
       </div>
     );

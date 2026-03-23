@@ -17,6 +17,7 @@ function GradeManagement() {
     category: '', 
     quality_level: '', 
     grade_class: 'STANDARD',
+    is_quality_grade: 1,
     price: '', 
     description: '', 
     status: 'Active' 
@@ -49,7 +50,8 @@ function GradeManagement() {
         group_name: master.group,
         category: master.category,
         quality_level: master.quality,
-        grade_class: master.class || 'STANDARD',
+        grade_class: master.grade_class || 'STANDARD',
+        is_quality_grade: master.is_quality_grade ?? 1,
         description: master.description
       });
     } else {
@@ -65,6 +67,7 @@ function GradeManagement() {
       category: '', 
       quality_level: '', 
       grade_class: 'STANDARD',
+      is_quality_grade: 1,
       price: '', 
       description: '', 
       status: 'Active' 
@@ -240,13 +243,27 @@ function GradeManagement() {
               <select
                 value={form.grade_class}
                 onChange={(e) => setForm({...form, grade_class: e.target.value})}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'} ${form.grade_class === 'PREMIUM' || form.group_name === 'LEAF_ORANGE_FULL' ? 'border-amber-500 ring-1 ring-amber-500 bg-amber-50/10' : ''}`}
               >
                 <option value="STANDARD">STANDARD</option>
                 <option value="PREMIUM">PREMIUM</option>
                 <option value="REJECT">REJECT</option>
+                <option value="PROCESS">PROCESS</option>
                 <option value="SPECIAL">SPECIAL</option>
               </select>
+            </div>
+
+            <div className="flex items-center gap-3 pt-4">
+              <input
+                type="checkbox"
+                id="is_quality_grade"
+                checked={form.is_quality_grade === 1}
+                onChange={(e) => setForm({...form, is_quality_grade: e.target.checked ? 1 : 0})}
+                className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+              />
+              <label htmlFor="is_quality_grade" className="text-sm font-medium">
+                Quality Grade (Include in production totals)
+              </label>
             </div>
 
             <div>
@@ -296,6 +313,7 @@ function GradeManagement() {
               <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Name / Group</th>
               <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Category</th>
               <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Level</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Class / Quality</th>
               <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Price (USD)</th>
               <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider text-center">Status</th>
               <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider text-right">Actions</th>
@@ -321,6 +339,18 @@ function GradeManagement() {
                 </td>
                 <td className="px-6 py-4">
                    <span className="text-gray-600 dark:text-gray-400 font-medium italic">{item.quality_level}</span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-medium">{item.grade_class}</span>
+                    <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase text-center w-fit ${
+                      item.is_quality_grade === 1 
+                        ? (darkMode ? 'bg-green-900/40 text-green-400 border border-green-800' : 'bg-green-100 text-green-700 border border-green-200')
+                        : (darkMode ? 'bg-orange-900/40 text-orange-400 border border-orange-800' : 'bg-orange-100 text-orange-700 border border-orange-200')
+                    }`}>
+                      {item.is_quality_grade === 1 ? 'QUALITY' : 'OPERATIONAL'}
+                    </span>
+                  </div>
                 </td>
                 <td className="px-6 py-4 font-bold text-indigo-600 dark:text-indigo-400">
                    ${parseFloat(item.price).toFixed(2)}

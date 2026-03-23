@@ -18,13 +18,17 @@ const prices = {
 };
 
 db.serialize(() => {
-  const stmt = db.prepare("UPDATE grades SET price = ? WHERE grade_code = ?");
+  const insertOrUpdateStmt = db.prepare(
+    "INSERT OR REPLACE INTO grades (grade_code, price) VALUES (?, ?)"
+  );
+  
   for (const [code, price] of Object.entries(prices)) {
-    stmt.run(price, code, (err) => {
-      if (err) console.error(`Failed to update ${code}:`, err);
+    insertOrUpdateStmt.run(code, price, (err) => {
+      if (err) console.error(`Failed to insert/update ${code}:`, err);
     });
   }
-  stmt.finalize(() => {
+  
+  insertOrUpdateStmt.finalize(() => {
     console.log('Finished updating grade prices.');
     db.close();
   });

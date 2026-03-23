@@ -115,15 +115,16 @@ async function syncPCNRecord(pcnNumber, saleNumberId, effectivePs) {
     // 2. Calculate totals from tickets
     const [totals] = await db.execute(`
       SELECT 
-        COUNT(*) as totalTickets,
-        SUM(netWeight) as totalWeight,
-        SUM(totalValue) as totalValue,
-        COUNT(DISTINCT farmerId) as totalFarmers,
-        MAX(ps) as latestPs,
-        MAX(saleNumberId) as latestSnId
-      FROM tickets
-      WHERE pcnNumber = ?
-    `, [pcnNumber]);
+        (SELECT COUNT(*) FROM tickets WHERE pcnNumber = ?) as totalTickets,
+        SUM(CASE WHEN g.is_quality_grade = 1 THEN t.netWeight ELSE 0 END) as totalWeight,
+        SUM(CASE WHEN g.is_quality_grade = 1 THEN t.totalValue ELSE 0 END) as totalValue,
+        COUNT(DISTINCT CASE WHEN g.is_quality_grade = 1 THEN t.farmerId ELSE NULL END) as totalFarmers,
+        MAX(t.ps) as latestPs,
+        MAX(t.saleNumberId) as latestSnId
+      FROM tickets t
+      LEFT JOIN grades g ON t.grade_code = g.grade_code
+      WHERE t.pcnNumber = ?
+    `, [pcnNumber, pcnNumber]);
 
     const stats = totals[0];
     if (!stats || stats.totalTickets === 0) {
@@ -165,72 +166,75 @@ async function syncPCNRecord(pcnNumber, saleNumberId, effectivePs) {
 
 async function syncGradesFromMaster() {
   const MASTER_GRADES = [
-    { code: 'X1L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Choice', p: 2.370 },
-    { code: 'X2L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Fine', p: 2.112 },
-    { code: 'X3L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Good', p: 1.474 },
-    { code: 'X4L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Fair', p: 0.891 },
-    { code: 'X5L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Low', p: 0.555 },
-    { code: 'X1O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Choice', p: 2.405 },
-    { code: 'X2O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Fine', p: 2.225 },
-    { code: 'X3O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Good', p: 1.588 },
-    { code: 'X4O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Fair', p: 0.939 },
-    { code: 'X5O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Low', p: 0.590 },
-    { code: 'X6O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Reject', p: 0.250 },
-    { code: 'XLV', group: 'LUGS_VAR', cat: 'LUGS', q: 'Low', p: 0.579 },
-    { code: 'XOV', group: 'LUGS_VAR', cat: 'LUGS', q: 'Low', p: 0.634 },
-    { code: 'XND', group: 'NON_DESCRIPT', cat: 'LUGS', q: 'Reject', p: 0.164 },
-    { code: 'XG', group: 'LUGS_REJECT', cat: 'LUGS', q: 'Reject', p: 0.391 },
-    { code: 'C1L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Choice', p: 2.632 },
-    { code: 'C2L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Fine', p: 2.383 },
-    { code: 'C3L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Good', p: 1.795 },
-    { code: 'C4L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Fair', p: 1.262 },
-    { code: 'C5L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Low', p: 0.604 },
-    { code: 'C1O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Choice', p: 2.753 },
-    { code: 'C2O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Fine', p: 2.556 },
-    { code: 'C3O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Good', p: 1.870 },
-    { code: 'C4O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Fair', p: 1.368 },
-    { code: 'C5O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Low', p: 0.654 },
-    { code: 'C6O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Reject', p: 0.469 },
-    { code: 'L1L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Choice', p: 3.185 },
-    { code: 'L2L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Fine', p: 2.843 },
-    { code: 'L3L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Good', p: 2.246 },
-    { code: 'L4L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Fair', p: 1.748 },
-    { code: 'L5L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Low', p: 1.240 },
-    { code: 'L1O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Choice', p: 3.268 },
-    { code: 'L2O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Fine', p: 3.130 },
-    { code: 'L3O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Good', p: 2.688 },
-    { code: 'L4O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Fair', p: 1.900 },
-    { code: 'L5O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Low', p: 1.378 },
-    { code: 'L1R', group: 'LEAF_RED', cat: 'LEAF', q: 'Choice', p: 3.176 },
-    { code: 'L2R', group: 'LEAF_RED', cat: 'LEAF', q: 'Fine', p: 2.763 },
-    { code: 'L3R', group: 'LEAF_RED', cat: 'LEAF', q: 'Good', p: 2.012 },
-    { code: 'L4R', group: 'LEAF_RED', cat: 'LEAF', q: 'Fair', p: 1.441 },
-    { code: 'L5R', group: 'LEAF_RED', cat: 'LEAF', q: 'Low', p: 1.072 },
-    { code: 'LLV', group: 'LEAF_VAR', cat: 'LEAF', q: 'Low', p: 0.950 },
-    { code: 'LOV', group: 'LEAF_VAR', cat: 'LEAF', q: 'Low', p: 1.094 },
-    { code: 'LND', group: 'NON_DESCRIPT', cat: 'LEAF', q: 'Reject', p: 0.261 },
-    { code: 'LG', group: 'LEAF_REJECT', cat: 'LEAF', q: 'Reject', p: 0.391 },
-    { code: 'B1L', group: 'BRIGHT_LEAF', cat: 'LEAF', q: 'Choice', p: 0.519 },
-    { code: 'B1O', group: 'BRIGHT_LEAF', cat: 'LEAF', q: 'Choice', p: 0.571 },
-    { code: 'LK', group: 'LEAF_VAR', cat: 'LEAF', q: 'Low', p: 0.589 },
-    { code: 'M1L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Choice', p: 3.010 },
-    { code: 'M2L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Fine', p: 2.600 },
-    { code: 'M3L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Good', p: 1.973 },
-    { code: 'M4L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Fair', p: 1.385 },
-    { code: 'M5L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Low', p: 1.058 },
-    { code: 'M1O', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Choice', p: 3.163 },
-    { code: 'M2O', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Fine', price: 2.917 },
-    { code: 'M3O', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Good', price: 2.324 },
-    { code: 'M4O', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Fair', price: 1.731 },
-    { code: 'M5O', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Low', price: 1.229 },
-    { code: 'M1R', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Choice', price: 2.841 },
-    { code: 'M2R', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Fine', price: 2.720 },
-    { code: 'M3R', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Good', price: 1.895 },
-    { code: 'M4R', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Fair', price: 1.396 },
-    { code: 'M5R', group: 'SMOKING_LEAF', category: 'SMOKING_LEAF', quality: 'Low', price: 0.969 },
-    { code: 'L1OF', group: 'LEAF_ORANGE_FULL', cat: 'LEAF', q: 'Choice', p: 3.320, cls: 'STANDARD' },
-    { code: 'L2OF', group: 'LEAF_ORANGE_FULL', cat: 'LEAF', q: 'Fine', p: 3.240, cls: 'STANDARD' },
-    { code: 'L3OF', group: 'LEAF_ORANGE_FULL', cat: 'LEAF', q: 'Good', p: 2.860, cls: 'STANDARD' }
+    { code: 'X1L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Choice', p: 2.370, cls: 'STANDARD', is_q: 1 },
+    { code: 'X2L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Fine', p: 2.112, cls: 'STANDARD', is_q: 1 },
+    { code: 'X3L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Good', p: 1.474, cls: 'STANDARD', is_q: 1 },
+    { code: 'X4L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Fair', p: 0.891, cls: 'STANDARD', is_q: 1 },
+    { code: 'X5L', group: 'LUGS_LEMON', cat: 'LUGS', q: 'Low', p: 0.555, cls: 'STANDARD', is_q: 1 },
+    { code: 'X1O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Choice', p: 2.405, cls: 'STANDARD', is_q: 1 },
+    { code: 'X2O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Fine', p: 2.225, cls: 'STANDARD', is_q: 1 },
+    { code: 'X3O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Good', p: 1.588, cls: 'STANDARD', is_q: 1 },
+    { code: 'X4O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Fair', p: 0.939, cls: 'STANDARD', is_q: 1 },
+    { code: 'X5O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Low', p: 0.590, cls: 'STANDARD', is_q: 1 },
+    { code: 'X6O', group: 'LUGS_ORANGE', cat: 'LUGS', q: 'Reject', p: 0.250, cls: 'REJECT', is_q: 1 },
+    { code: 'XLV', group: 'LUGS_VAR', cat: 'LUGS', q: 'Low', p: 0.579, cls: 'STANDARD', is_q: 1 },
+    { code: 'XOV', group: 'LUGS_VAR', cat: 'LUGS', q: 'Low', p: 0.634, cls: 'STANDARD', is_q: 1 },
+    { code: 'XND', group: 'NON_DESCRIPT', cat: 'LUGS', q: 'Reject', p: 0.164, cls: 'REJECT', is_q: 1 },
+    { code: 'XG', group: 'LUGS_REJECT', cat: 'LUGS', q: 'Reject', p: 0.391, cls: 'REJECT', is_q: 1 },
+    { code: 'C1L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Choice', p: 2.632, cls: 'STANDARD', is_q: 1 },
+    { code: 'C2L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Fine', p: 2.383, cls: 'STANDARD', is_q: 1 },
+    { code: 'C3L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Good', p: 1.795, cls: 'STANDARD', is_q: 1 },
+    { code: 'C4L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Fair', p: 1.262, cls: 'STANDARD', is_q: 1 },
+    { code: 'C5L', group: 'CUTTERS_LEMON', cat: 'CUTTERS', q: 'Low', p: 0.604, cls: 'STANDARD', is_q: 1 },
+    { code: 'C1O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Choice', p: 2.753, cls: 'STANDARD', is_q: 1 },
+    { code: 'C2O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Fine', p: 2.556, cls: 'STANDARD', is_q: 1 },
+    { code: 'C3O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Good', p: 1.870, cls: 'STANDARD', is_q: 1 },
+    { code: 'C4O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Fair', p: 1.368, cls: 'STANDARD', is_q: 1 },
+    { code: 'C5O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Low', p: 0.654, cls: 'STANDARD', is_q: 1 },
+    { code: 'C6O', group: 'CUTTERS_ORANGE', cat: 'CUTTERS', q: 'Reject', p: 0.469, cls: 'REJECT', is_q: 1 },
+    { code: 'L1L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Choice', p: 3.185, cls: 'STANDARD', is_q: 1 },
+    { code: 'L2L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Fine', p: 2.843, cls: 'STANDARD', is_q: 1 },
+    { code: 'L3L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Good', p: 2.246, cls: 'STANDARD', is_q: 1 },
+    { code: 'L4L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Fair', p: 1.748, cls: 'STANDARD', is_q: 1 },
+    { code: 'L5L', group: 'LEAF_LEMON', cat: 'LEAF', q: 'Low', p: 1.240, cls: 'STANDARD', is_q: 1 },
+    { code: 'L1O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Choice', p: 3.268, cls: 'STANDARD', is_q: 1 },
+    { code: 'L2O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Fine', p: 3.130, cls: 'STANDARD', is_q: 1 },
+    { code: 'L3O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Good', p: 2.688, cls: 'STANDARD', is_q: 1 },
+    { code: 'L4O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Fair', p: 1.900, cls: 'STANDARD', is_q: 1 },
+    { code: 'L5O', group: 'LEAF_ORANGE', cat: 'LEAF', q: 'Low', p: 1.378, cls: 'STANDARD', is_q: 1 },
+    { code: 'L1R', group: 'LEAF_RED', cat: 'LEAF', q: 'Choice', p: 3.176, cls: 'STANDARD', is_q: 1 },
+    { code: 'L2R', group: 'LEAF_RED', cat: 'LEAF', q: 'Fine', p: 2.763, cls: 'STANDARD', is_q: 1 },
+    { code: 'L3R', group: 'LEAF_RED', cat: 'LEAF', q: 'Good', p: 2.012, cls: 'STANDARD', is_q: 1 },
+    { code: 'L4R', group: 'LEAF_RED', cat: 'LEAF', q: 'Fair', p: 1.441, cls: 'STANDARD', is_q: 1 },
+    { code: 'L5R', group: 'LEAF_RED', cat: 'LEAF', q: 'Low', p: 1.072, cls: 'STANDARD', is_q: 1 },
+    { code: 'LLV', group: 'LEAF_VAR', cat: 'LEAF', q: 'Low', p: 0.950, cls: 'STANDARD', is_q: 1 },
+    { code: 'LOV', group: 'LEAF_VAR', cat: 'LEAF', q: 'Low', p: 1.094, cls: 'STANDARD', is_q: 1 },
+    { code: 'LND', group: 'NON_DESCRIPT', cat: 'LEAF', q: 'Reject', p: 0.261, cls: 'REJECT', is_q: 1 },
+    { code: 'LG', group: 'LEAF_REJECT', cat: 'LEAF', q: 'Reject', p: 0.391, cls: 'REJECT', is_q: 1 },
+    { code: 'B1L', group: 'BRIGHT_LEAF', cat: 'LEAF', q: 'Choice', p: 0.519, cls: 'SPECIAL', is_q: 1 },
+    { code: 'B1O', group: 'BRIGHT_LEAF', cat: 'LEAF', q: 'Choice', p: 0.571, cls: 'SPECIAL', is_q: 1 },
+    { code: 'LK', group: 'LEAF_VAR', cat: 'LEAF', q: 'Low', p: 0.589, cls: 'SPECIAL', is_q: 1 },
+    { code: 'M1L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Choice', p: 3.010, cls: 'STANDARD', is_q: 1 },
+    { code: 'M2L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Fine', p: 2.600, cls: 'STANDARD', is_q: 1 },
+    { code: 'M3L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Good', p: 1.973, cls: 'STANDARD', is_q: 1 },
+    { code: 'M4L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Fair', p: 1.385, cls: 'STANDARD', is_q: 1 },
+    { code: 'M5L', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Low', p: 1.058, cls: 'STANDARD', is_q: 1 },
+    { code: 'M1O', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Choice', p: 3.163, cls: 'STANDARD', is_q: 1 },
+    { code: 'M2O', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Fine', p: 2.917, cls: 'STANDARD', is_q: 1 },
+    { code: 'M3O', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Good', p: 2.324, cls: 'STANDARD', is_q: 1 },
+    { code: 'M4O', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Fair', p: 1.731, cls: 'STANDARD', is_q: 1 },
+    { code: 'M5O', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Low', p: 1.229, cls: 'STANDARD', is_q: 1 },
+    { code: 'M1R', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Choice', p: 2.841, cls: 'STANDARD', is_q: 1 },
+    { code: 'M2R', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Fine', p: 2.720, cls: 'STANDARD', is_q: 1 },
+    { code: 'M3R', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Good', p: 1.895, cls: 'STANDARD', is_q: 1 },
+    { code: 'M4R', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Fair', p: 1.396, cls: 'STANDARD', is_q: 1 },
+    { code: 'M5R', group: 'SMOKING_LEAF', cat: 'SMOKING_LEAF', q: 'Low', p: 0.969, cls: 'STANDARD', is_q: 1 },
+    { code: 'L1OF', group: 'LEAF_ORANGE_FULL', cat: 'LEAF', q: 'Choice', p: 3.320, cls: 'PREMIUM', is_q: 1 },
+    { code: 'L2OF', group: 'LEAF_ORANGE_FULL', cat: 'LEAF', q: 'Fine', p: 3.240, cls: 'PREMIUM', is_q: 1 },
+    { code: 'L3OF', group: 'LEAF_ORANGE_FULL', cat: 'LEAF', q: 'Good', p: 2.860, cls: 'PREMIUM', is_q: 1 },
+    { code: 'REJ', group: 'REJECT', cat: 'REJECT', q: 'Reject', p: 0, cls: 'REJECT', is_q: 1 },
+    { code: 'CAN', group: 'PROCESS', cat: 'PROCESS', q: 'None', p: 0, cls: 'PROCESS', is_q: 0 },
+    { code: 'WIT', group: 'PROCESS', cat: 'PROCESS', q: 'None', p: 0, cls: 'PROCESS', is_q: 0 }
   ];
 
   try {
@@ -241,9 +245,9 @@ async function syncGradesFromMaster() {
         await db.execute('UPDATE grades SET price = ? WHERE grade_code = ?', [g.p || g.price, g.code]);
       } else {
         const id = uuidv4();
-        await db.execute(`INSERT INTO grades (id, name, price, description, status, grade_code, group_name, category, quality_level, grade_class, createdAt)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, g.code, g.p || g.price, `Master Grade ${g.code}`, 'Active', g.code, g.group, g.cat || g.category, g.q || g.quality, g.cls || g.grade_class || 'STANDARD',
+        await db.execute(`INSERT INTO grades (id, name, price, description, status, grade_code, group_name, category, quality_level, grade_class, is_quality_grade, createdAt)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, g.code, g.p || g.price, `Master Grade ${g.code}`, 'Active', g.code, g.group, g.cat || g.category, g.q || g.quality, g.cls || g.grade_class || 'STANDARD', g.is_q ?? 1,
            new Date().toISOString().slice(0, 19).replace('T', ' ')]);
       }
     }
@@ -846,7 +850,7 @@ app.get('/api/grades', authenticateToken, async (req, res) => {
 
 app.post('/api/grades', authenticateToken, async (req, res) => {
   try {
-    const { name, price, description, status, grade_code, group_name, category, quality_level, grade_class } = req.body;
+    const { name, price, description, status, grade_code, group_name, category, quality_level, grade_class, is_quality_grade } = req.body;
     
     // Premium Grade Validation
     if (grade_code && ['L1OF', 'L2OF', 'L3OF'].includes(grade_code)) {
@@ -859,11 +863,11 @@ app.post('/api/grades', authenticateToken, async (req, res) => {
       }
     }
     const id = uuidv4();
-    await db.execute(`INSERT INTO grades (id, name, price, description, status, grade_code, group_name, category, quality_level, grade_class, createdAt)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, name, price, description, status || 'Active', grade_code, group_name, category, quality_level, grade_class,
+    await db.execute(`INSERT INTO grades (id, name, price, description, status, grade_code, group_name, category, quality_level, grade_class, is_quality_grade, createdAt)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, name, price, description, status || 'Active', grade_code, group_name, category, quality_level, grade_class, is_quality_grade ?? 1,
        new Date().toISOString().slice(0, 19).replace('T', ' ')]);
-    res.json({ id, name, price, description, status: status || 'Active', grade_code, group_name, category, quality_level, grade_class });
+    res.json({ id, name, price, description, status: status || 'Active', grade_code, group_name, category, quality_level, grade_class, is_quality_grade: is_quality_grade ?? 1 });
   } catch (error) {
     if (error.message && error.message.includes('UNIQUE constraint failed: grades.grade_code')) {
       return res.status(409).json({ error: 'Grade code already exists' });
@@ -875,7 +879,7 @@ app.post('/api/grades', authenticateToken, async (req, res) => {
 
 app.put('/api/grades/:id', authenticateToken, async (req, res) => {
   try {
-    const { name, price, description, status, grade_code, group_name, category, quality_level, grade_class } = req.body;
+    const { name, price, description, status, grade_code, group_name, category, quality_level, grade_class, is_quality_grade } = req.body;
 
     // Premium Grade Validation
     if (grade_code && ['L1OF', 'L2OF', 'L3OF'].includes(grade_code)) {
@@ -887,10 +891,10 @@ app.put('/api/grades/:id', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: 'Standard orange leaf cannot be in LEAF_ORANGE_FULL' });
       }
     }
-    await db.execute(`UPDATE grades SET name=?, price=?, description=?, status=?, grade_code=?, group_name=?, category=?, quality_level=?, grade_class=?
+    await db.execute(`UPDATE grades SET name=?, price=?, description=?, status=?, grade_code=?, group_name=?, category=?, quality_level=?, grade_class=?, is_quality_grade=?
                       WHERE id=?`,
-      [name, price, description, status, grade_code, group_name, category, quality_level, grade_class, req.params.id]);
-    res.json({ id: req.params.id, name, price, description, status, grade_code, group_name, category, quality_level, grade_class });
+      [name, price, description, status, grade_code, group_name, category, quality_level, grade_class, is_quality_grade ?? 1, req.params.id]);
+    res.json({ id: req.params.id, name, price, description, status, grade_code, group_name, category, quality_level, grade_class, is_quality_grade: is_quality_grade ?? 1 });
   } catch (error) {
     console.error('Update grade error:', error);
     res.status(500).json({ error: 'Error updating grade' });

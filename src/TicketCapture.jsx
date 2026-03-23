@@ -162,6 +162,13 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
       return;
     }
 
+    // PCN Limit Check (Frontend Side)
+    const pcnTickets = items.filter(t => t.pcnNumber === selectedPcn);
+    if (pcnTickets.length >= 25 && !isUpdateMode) {
+      alert('A PCN cannot contain more than 25 tickets. Please use a new PCN number.');
+      return;
+    }
+
     // If duplicate and not in update mode, block non-supervisors
     if (duplicateTicket && !isUpdateMode) {
       if (!isSupervisor) {
@@ -323,8 +330,10 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
             {/* STEP 1: Market Center */}
             <StepCard step={1} done={!!selectedMarketCenter} darkMode={darkMode} label="Select Market Center *">
               <select
+                id="tc-mc"
                 value={selectedMarketCenter}
                 onChange={(e) => handleMarketCenterChange(e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, 'tc-sn')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
                 <option value="">-- Select Market Center --</option>
@@ -338,11 +347,13 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
             {/* STEP 2: Sale Number */}
             <StepCard step={2} done={!!selectedSaleNumber} disabled={!selectedMarketCenter} darkMode={darkMode} label="Select Sale Number *">
               <select
+                id="tc-sn"
                 value={selectedSaleNumber}
                 onChange={(e) => {
                   const sn = filteredSaleNumbers.find(s => s.saleNumber === e.target.value);
                   if (sn) handleSaleNumberChange(sn);
                 }}
+                onKeyDown={(e) => handleKeyDown(e, 'tc-date')}
                 disabled={!selectedMarketCenter}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'} ${!selectedMarketCenter ? 'cursor-not-allowed opacity-60' : ''}`}
               >
@@ -359,9 +370,11 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
             {/* STEP 3: Sale Date */}
             <StepCard step={3} done={!!selectedSaleDate} disabled={!selectedSaleNumber} darkMode={darkMode} label="Select Sale Date *">
               <input
+                id="tc-date"
                 type="date"
                 value={selectedSaleDate}
                 onChange={(e) => handleSaleDateChange(e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, 'tc-pcn')}
                 disabled={!selectedSaleNumber}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'} ${!selectedSaleNumber ? 'cursor-not-allowed opacity-60' : ''}`}
               />
@@ -370,9 +383,11 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
             {/* STEP 4: PCN Number */}
             <StepCard step={4} done={!!selectedPcn} disabled={!selectedSaleDate} darkMode={darkMode} label="Enter PCN Number *">
               <input
+                id="tc-pcn"
                 type="text"
                 value={selectedPcn}
                 onChange={(e) => handlePcnChange(e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, 'tc-ticket')}
                 disabled={!selectedSaleDate}
                 placeholder="Enter Purchase Contract Note (PCN)"
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'} ${!selectedSaleDate ? 'cursor-not-allowed opacity-60' : ''}`}
@@ -512,29 +527,61 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
                     className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'} ${(!workflowComplete || (duplicateTicket && !isUpdateMode)) ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     <option value="">Select Grade</option>
-                    {['LUGS', 'CUTTERS', 'THIN_LEAF', 'LEAF', 'Full Orange Leaf (Premium)', 'Other'].map(cat => {
-                      const catGrades = grades.filter(g => {
-                        if (cat === 'Full Orange Leaf (Premium)') return g.group_name === 'LEAF_ORANGE_FULL';
-                        if (cat === 'LEAF') return g.category === 'LEAF' && g.group_name !== 'LEAF_ORANGE_FULL';
-                        return (g.category || 'Other') === cat;
-                      });
-                      if (catGrades.length === 0) return null;
-                      return (
-                        <optgroup key={cat} label={cat}>
-                          {catGrades.sort((a,b) => {
-                            const order = ['Choice', 'Fine', 'Good', 'Fair', 'Low', 'Reject'];
-                            return order.indexOf(a.quality_level || 'Reject') - order.indexOf(b.quality_level || 'Reject');
-                          }).map(g => (
-                            <option key={g.id} value={g.id}>{g.grade_code} - ${g.price} ({g.quality_level})</option>
-                          ))}
-                        </optgroup>
-                      );
-                    })}
+                    <optgroup label="✅ QUALITY GRADES">
+                      {['LUGS', 'CUTTERS', 'THIN_LEAF', 'LEAF', 'Full Orange Leaf (Premium)', 'Other'].map(cat => {
+                        const catGrades = grades.filter(g => {
+                          if (g.is_quality_grade !== 1) return false;
+                          if (cat === 'Full Orange Leaf (Premium)') return g.group_name === 'LEAF_ORANGE_FULL';
+                          if (cat === 'LEAF') return g.category === 'LEAF' && g.group_name !== 'LEAF_ORANGE_FULL';
+                          return (g.category || 'Other') === cat;
+                        });
+                        if (catGrades.length === 0) return null;
+                        return (
+                          <optgroup key={cat} label={`   ${cat}`}>
+                            {catGrades.sort((a,b) => {
+                              const order = ['Choice', 'Fine', 'Good', 'Fair', 'Low', 'Reject'];
+                              return order.indexOf(a.quality_level || 'Reject') - order.indexOf(b.quality_level || 'Reject');
+                            }).map(g => (
+                              <option key={g.id} value={g.id}>{g.grade_code} - ${g.price} ({g.quality_level})</option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </optgroup>
+                    <optgroup label="⚠️ OPERATIONAL GRADES (Non-Production)">
+                      {grades.filter(g => g.is_quality_grade === 0).map(g => (
+                        <option key={g.id} value={g.id}>{g.grade_code} - {g.name}</option>
+                      ))}
+                    </optgroup>
                   </select>
                   {form.gradeId && (
-                    <p className="text-[10px] text-blue-600 mt-1 uppercase font-bold">
-                       {grades.find(g => g.id === form.gradeId)?.name}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      {(() => {
+                        const selectedGrade = grades.find(g => g.id === form.gradeId);
+                        const isPremium = selectedGrade?.group_name === 'LEAF_ORANGE_FULL';
+                        const isReject = selectedGrade?.grade_code === 'REJ' || selectedGrade?.quality_level === 'Reject';
+                        const isOperational = selectedGrade?.is_quality_grade === 0;
+
+                        return (
+                          <>
+                            <p className={`text-[10px] uppercase font-bold ${
+                              isPremium ? 'text-amber-600' : (isReject ? 'text-rose-600' : (isOperational ? 'text-orange-500' : 'text-blue-600'))
+                            }`}>
+                               {selectedGrade?.name}
+                            </p>
+                            {isPremium && (
+                              <span className="text-[8px] px-1 bg-amber-100 text-amber-700 rounded border border-amber-200 font-bold uppercase tracking-tighter">Premium Grade</span>
+                            )}
+                            {isReject && (
+                              <span className="text-[8px] px-1 bg-rose-100 text-rose-700 rounded border border-rose-200 font-bold uppercase tracking-tighter">Reject</span>
+                            )}
+                            {isOperational && (
+                              <span className="text-[8px] px-1 bg-orange-100 text-orange-700 rounded border border-orange-200 font-bold uppercase tracking-tighter">Operational</span>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
                   )}
                 </div>
 
