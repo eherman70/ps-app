@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useStorage } from './hooks/useStorage';
-import { Plus, X } from 'lucide-react';
+import { Plus, Trash2, X, ShoppingCart, User, Package } from 'lucide-react';
 
 function IssueInputs() {
-  const { darkMode, currentUser, testMode } = useAppContext();
+  const { darkMode, currentUser, testMode, activePS } = useAppContext();
   const { items, loading, saveItem, deleteItem } = useStorage('issuedinput');
   const { items: farmers } = useStorage('farmer');
   const { items: inputTypes } = useStorage('inputtype');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ farmerId: '', inputTypeId: '', quantity: '', totalValue: '' });
+
+  const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
+  const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
+
+  // Filter farmers by active PS
+  const filteredFarmers = farmers.filter(f => activePSValue === 'All' || f.ps === activePSValue);
 
   const handleInputType = (typeId) => {
     const type = inputTypes.find(t => t.id === typeId);
@@ -38,19 +44,24 @@ function IssueInputs() {
     const farmer = farmers.find(f => f.id === form.farmerId);
     const inputType = inputTypes.find(t => t.id === form.inputTypeId);
 
-    const id = `II${Date.now()}`;
-    await saveItem(id, {
-      ...form,
-      id,
-      farmerName: `${farmer.firstName} ${farmer.lastName}`,
-      farmerNumber: farmer.farmerNumber,
-      inputName: inputType.name,
-      unitPrice: inputType.unitPrice,
-      ps: farmer.ps,
-      testMode,
-      createdAt: new Date().toISOString()
-    });
-    resetForm();
+    if (!farmer || !inputType) return;
+
+    try {
+      await saveItem(null, {
+        ...form,
+        farmerName: `${farmer.firstName} ${farmer.lastName}`,
+        farmerNumber: farmer.farmerNumber,
+        inputName: inputType.name,
+        unitPrice: inputType.unitPrice,
+        ps: farmer.ps,
+        testMode,
+        createdAt: new Date().toISOString()
+      });
+      alert('Input issued successfully');
+      resetForm();
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
   };
 
   const resetForm = () => {
@@ -59,117 +70,145 @@ function IssueInputs() {
   };
 
   const handleDelete = async (id) => {
-    if (confirm('Delete?')) {
-      await deleteItem(id);
+    if (confirm('Are you sure you want to delete this issued entry?')) {
+      try {
+        await deleteItem(id);
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
     }
   };
 
   return (
     <div>
       <div className="flex justify-between mb-6">
-        <h3 className="text-xl font-semibold">Issue Inputs</h3>
+        <h3 className="text-xl font-semibold">Issue Inputs & Advances</h3>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg"
+          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition shadow"
         >
           <Plus className="w-5 h-5" />
-          <span>Issue</span>
+          <span>New Entry</span>
         </button>
       </div>
 
       {showForm && (
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-6 mb-6`}>
-          <div className="flex justify-between mb-4">
-            <h4 className="font-semibold">Issue Input</h4>
-            <button onClick={resetForm}><X className="w-5 h-5" /></button>
+        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl shadow-lg p-6 mb-8 border`}>
+          <div className="flex justify-between mb-6">
+            <h4 className="font-semibold text-lg">New Input Issue / Cash Advance</h4>
+            <button onClick={resetForm}><X className="w-5 h-5 text-gray-500" /></button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div>
-              <label className="block mb-2 text-sm">Farmer *</label>
+              <label className="block mb-2 text-sm font-medium">Farmer *</label>
               <select
                 value={form.farmerId}
                 onChange={(e) => setForm({...form, farmerId: e.target.value})}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
-                <option value="">Select</option>
-                {farmers.map(f => (
+                <option value="">Select Farmer</option>
+                {filteredFarmers.map(f => (
                   <option key={f.id} value={f.id}>{f.farmerNumber} - {f.firstName} {f.lastName}</option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block mb-2 text-sm">Input Type *</label>
+              <label className="block mb-2 text-sm font-medium">Input / Advance Type *</label>
               <select
                 value={form.inputTypeId}
                 onChange={(e) => handleInputType(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
-                <option value="">Select</option>
+                <option value="">Select Type</option>
                 {inputTypes.map(t => (
-                  <option key={t.id} value={t.id}>{t.name} - ${t.unitPrice}/{t.unit}</option>
+                  <option key={t.id} value={t.id}>{t.name} (${t.unitPrice}/{t.unit})</option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block mb-2 text-sm">Quantity</label>
+              <label className="block mb-2 text-sm font-medium">Quantity</label>
               <input
                 type="number"
                 step="0.01"
                 value={form.quantity}
                 onChange={(e) => handleQty(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                placeholder="0.00"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
             </div>
 
             <div>
-              <label className="block mb-2 text-sm">Total (USD)</label>
-              <input
-                type="number"
-                value={form.totalValue}
-                readOnly
-                className={`w-full px-3 py-2 border rounded-lg bg-gray-100 ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
-              />
+              <label className="block mb-2 text-sm font-medium">Total Value (USD)</label>
+              <div className={`w-full px-4 py-2 border rounded-lg font-bold ${darkMode ? 'bg-gray-900 border-gray-700 text-green-400' : 'bg-slate-50 border-gray-200 text-green-700'}`}>
+                ${form.totalValue || '0.00'}
+              </div>
             </div>
           </div>
 
-          <div className="flex space-x-4 mt-6">
-            <button onClick={handleSubmit} className="px-6 py-2 bg-green-600 text-white rounded-lg">Issue</button>
-            <button onClick={resetForm} className={`px-6 py-2 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>Cancel</button>
+          <div className="flex space-x-4 mt-8">
+            <button onClick={handleSubmit} className="px-8 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold">
+              Issue Item
+            </button>
+            <button onClick={resetForm} className={`px-8 py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'}`}>
+              Cancel
+            </button>
           </div>
         </div>
       )}
 
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow overflow-x-auto`}>
-        <table className="w-full">
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow border ${darkMode ? 'border-gray-700' : 'border-gray-100'} overflow-hidden`}>
+        <table className="w-full text-sm">
           <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-semibold">Date</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold">Farmer</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold">Input</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold">Qty</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold">Total (USD)</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold">Actions</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Date</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Farmer</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Item</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider text-center">Qty</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider text-right">Total (USD)</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
             {items.map(item => (
-              <tr key={item.id}>
-                <td className="px-4 py-3">{new Date(item.createdAt).toLocaleDateString()}</td>
-                <td className="px-4 py-3">{item.farmerName}</td>
-                <td className="px-4 py-3">{item.inputName}</td>
-                <td className="px-4 py-3">{item.quantity || '-'}</td>
-                <td className="px-4 py-3 font-medium">${parseFloat(item.totalValue).toFixed(2)}</td>
-                <td className="px-4 py-3">
-                  <button onClick={() => handleDelete(item.id)} className="text-red-600"><Trash2 className="w-4 h-4" /></button>
+              <tr key={item.id} className={darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50 transition'}>
+                <td className="px-6 py-4 text-gray-500">
+                  {new Date(item.createdAt).toLocaleDateString()}
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 opacity-50" />
+                    <div className="flex flex-col">
+                       <span className="font-bold">{item.farmerName}</span>
+                       <span className="text-[10px] text-gray-500">{item.farmerNumber}</span>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4 font-medium">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4 opacity-50" />
+                    {item.inputName}
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-center font-medium">
+                  {item.quantity || '-'}
+                </td>
+                <td className="px-6 py-4 text-right font-bold text-red-600 dark:text-red-400">
+                   -${parseFloat(item.totalValue).toFixed(2)}
+                </td>
+                <td className="px-6 py-4 text-right text-gray-400">
+                   <button onClick={() => handleDelete(item.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 rounded-lg transition">
+                      <Trash2 className="w-5 h-5" />
+                   </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {items.length === 0 && <div className="text-center py-8 text-gray-500">No inputs issued yet</div>}
+        {items.length === 0 && !loading && <div className="text-center py-12 text-gray-500 italic">No inputs have been issued yet</div>}
+        {loading && <div className="text-center py-12 text-gray-500">Loading issue records...</div>}
       </div>
     </div>
   );

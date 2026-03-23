@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useStorage } from './hooks/useStorage';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Edit, Trash2, X, School } from 'lucide-react';
 
 export default function PrimarySocietyManagement() {
   const { darkMode, currentUser } = useAppContext();
@@ -10,21 +10,24 @@ export default function PrimarySocietyManagement() {
   const [form, setForm] = useState({ name: '', code: '', status: 'Active' });
   const [editing, setEditing] = useState(null);
 
+  const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
+
   const handleSubmit = async () => {
     if (!form.name || !form.code) {
       alert('Name and code are required');
       return;
     }
 
-    if (!confirm(`Save society \"${form.name}\"?`)) return;
-
-    await saveItem(editing?.id, {
-      id: editing?.id || form.code,
-      ...form,
-      createdAt: editing?.createdAt || new Date().toISOString(),
-    });
-
-    resetForm();
+    try {
+      await saveItem(editing?.id, {
+        ...form,
+        createdAt: editing?.createdAt || new Date().toISOString(),
+      });
+      alert(editing ? 'Society updated' : 'Society registered');
+      resetForm();
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
   };
 
   const resetForm = () => {
@@ -40,15 +43,20 @@ export default function PrimarySocietyManagement() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this society?')) return;
-    await deleteItem(id);
+    if (!confirm('Delete this society? This may affect linked farmers and tickets.')) return;
+    try {
+      await deleteItem(id);
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
   };
 
-  // Only allow admins to manage societies
-  if (currentUser.role !== 'admin') {
+  // Only allow supervisors to manage societies
+  if (!isSupervisor) {
     return (
-      <div className="flex flex-col items-center justify-center h-64">
-        <p className="text-gray-600">Only admin users can manage societies.</p>
+      <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+        <School className="w-16 h-16 mb-4 opacity-20" />
+        <p>Only Supervisors and Admins can manage primary societies.</p>
       </div>
     );
   }
@@ -59,7 +67,7 @@ export default function PrimarySocietyManagement() {
         <h3 className="text-xl font-semibold">Primary Societies</h3>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition shadow"
         >
           <Plus className="w-5 h-5" />
           <span>New Society</span>
@@ -67,83 +75,100 @@ export default function PrimarySocietyManagement() {
       </div>
 
       {showForm && (
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow p-6 mb-6`}>
-          <div className="flex justify-between mb-4">
-            <h4 className="font-semibold">{editing ? 'Edit' : 'New'} Society</h4>
-            <button onClick={resetForm}><X className="w-5 h-5" /></button>
+        <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} rounded-xl shadow-lg p-6 mb-8 border`}>
+          <div className="flex justify-between mb-6">
+            <h4 className="font-semibold text-lg">{editing ? 'Edit' : 'New'} Society Registration</h4>
+            <button onClick={resetForm}><X className="w-5 h-5 text-gray-500" /></button>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
-              <label className="block mb-2 text-sm">Name *</label>
+              <label className="block mb-2 text-sm font-medium">Society Name *</label>
               <input
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({...form, name: e.target.value})}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                placeholder="e.g. Ushetu Society"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
             </div>
 
             <div>
-              <label className="block mb-2 text-sm">Code *</label>
+              <label className="block mb-2 text-sm font-medium">Society Code *</label>
               <input
                 type="text"
                 value={form.code}
                 onChange={(e) => setForm({...form, code: e.target.value.toUpperCase()})}
                 disabled={Boolean(editing)}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                placeholder="e.g. USH01"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
+              {editing && <p className="text-[10px] text-gray-500 mt-1">Code cannot be changed</p>}
             </div>
 
             <div>
-              <label className="block mb-2 text-sm">Status</label>
+              <label className="block mb-2 text-sm font-medium">Status</label>
               <select
                 value={form.status}
                 onChange={(e) => setForm({...form, status: e.target.value})}
-                className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
-                <option>Active</option>
-                <option>Inactive</option>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
               </select>
             </div>
           </div>
 
-          <div className="flex space-x-4 mt-6">
-            <button onClick={handleSubmit} className="px-6 py-2 bg-green-600 text-white rounded-lg">Save</button>
-            <button onClick={resetForm} className={`px-6 py-2 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>Cancel</button>
+          <div className="flex space-x-4 mt-8">
+            <button onClick={handleSubmit} className="px-8 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold">
+              {editing ? 'Update Society' : 'Save Society'}
+            </button>
+            <button onClick={resetForm} className={`px-8 py-2 rounded-lg font-semibold ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'}`}>
+              Cancel
+            </button>
           </div>
         </div>
       )}
 
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow overflow-x-auto`}>
-        <table className="w-full">
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow border ${darkMode ? 'border-gray-700' : 'border-gray-100'} overflow-hidden`}>
+        <table className="w-full text-sm">
           <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-semibold">Code</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold">Name</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold">Status</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold">Actions</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Code</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Name</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider text-center">Status</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
             {societies.map(item => (
-              <tr key={item.id}>
-                <td className="px-4 py-3 font-medium">{item.code}</td>
-                <td className="px-4 py-3">{item.name}</td>
-                <td className="px-4 py-3">{item.status}</td>
-                <td className="px-4 py-3">
-                  <div className="flex space-x-2">
-                    <button onClick={() => handleEdit(item)} className="text-blue-600">Edit</button>
-                    <button onClick={() => handleDelete(item.id)} className="text-red-600">Delete</button>
+              <tr key={item.id} className={darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50 transition'}>
+                <td className="px-6 py-4 font-bold text-green-600 dark:text-green-400">{item.code}</td>
+                <td className="px-6 py-4 font-medium">{item.name}</td>
+                <td className="px-6 py-4 text-center">
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    item.status === 'Active' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-400'
+                  }`}>
+                    {item.status}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end space-x-3">
+                    <button onClick={() => handleEdit(item)} className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition" title="Edit">
+                      <Edit className="w-5 h-5" />
+                    </button>
+                    <button onClick={() => handleDelete(item.id)} className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition" title="Delete">
+                      <Trash2 className="w-5 h-5" />
+                    </button>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {societies.length === 0 && <div className="text-center py-8 text-gray-500">No societies yet</div>}
+        {societies.length === 0 && !loading && <div className="text-center py-12 text-gray-500 italic">No primary societies registered yet</div>}
+        {loading && <div className="text-center py-12 text-gray-500">Loading societies...</div>}
       </div>
     </div>
   );
 }
-
