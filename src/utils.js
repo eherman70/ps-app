@@ -78,3 +78,26 @@ export function downloadCSV(filename, content) {
     document.body.removeChild(link);
   }
 }
+
+export function getScopedPS(currentUser, activePS) {
+  const role = String(currentUser?.role || '').toLowerCase();
+  const isSupervisor = role === 'admin' || role === 'supervisor';
+
+  if (isSupervisor) {
+    return activePS || 'All';
+  }
+
+  return currentUser?.ps || '';
+}
+
+export function filterItemsByPS(items, scopedPS, field = 'ps') {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  if (!scopedPS || scopedPS === 'All') {
+    return items;
+  }
+
+  return items.filter(item => item?.[field] === scopedPS);
+}

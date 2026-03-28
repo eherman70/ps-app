@@ -3,14 +3,17 @@ import { useAppContext } from '../context/AppContext';
 import { useStorage } from '../hooks/useStorage';
 import TicketCapture from '../TicketCapture';
 import { Play } from 'lucide-react';
+import { filterItemsByPS, getScopedPS } from '../utils';
 
 function SalesSummary() {
-  const { darkMode } = useAppContext();
+  const { darkMode, currentUser, activePS } = useAppContext();
   const { items: tickets } = useStorage('ticket');
   const { items: saleNumbers } = useStorage('salenumber');
   const { items: marketCenters } = useStorage('marketcenter');
   
   const [capturingSale, setCapturingSale] = useState(null);
+  const scopedPS = getScopedPS(currentUser, activePS);
+  const scopedTickets = filterItemsByPS(tickets, scopedPS);
 
   if (capturingSale) {
     return (
@@ -26,7 +29,7 @@ function SalesSummary() {
   // Aggregate stats per sale number
   const salesStats = saleNumbers.map(sn => {
     // Filter tickets strictly to this sale number
-    const saleTickets = tickets.filter(t => t.saleNumber === sn.saleNumber);
+    const saleTickets = scopedTickets.filter(t => t.saleNumber === sn.saleNumber);
     const bales = saleTickets.length;
     
     // Sum mass and value - using both legacy and new field names for robustness
@@ -47,7 +50,7 @@ function SalesSummary() {
       value: value.toFixed(2),
       avgPrice: avgPrice.toFixed(2)
     };
-  });
+  }).filter(stat => scopedPS === 'All' || stat.bales > 0);
 
   return (
     <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow overflow-hidden`}>

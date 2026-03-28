@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { useStorage } from '../hooks/useStorage';
 import { Download, FileSpreadsheet, Users, Leaf, Banknote, Tag, Printer, ChevronDown, ChevronRight, Star } from 'lucide-react';
+import { filterItemsByPS, getScopedPS } from '../utils';
 
 function Reports() {
   const { darkMode, currentUser, activePS } = useAppContext();
@@ -18,11 +19,16 @@ function Reports() {
   const [seasonFilter, setSeasonFilter] = useState('');
   const [showSalesMenu, setShowSalesMenu] = useState(false);
   const [selectedSales, setSelectedSales] = useState([]);
+  const [expandedSales, setExpandedSales] = useState({});
   const [categoryFilter, setCategoryFilter] = useState('');
   const [levelFilter, setLevelFilter] = useState('');
 
   const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
-  const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
+  const activePSValue = getScopedPS(currentUser, activePS);
+  const scopedFarmers = useMemo(() => filterItemsByPS(farmers, activePSValue), [farmers, activePSValue]);
+  const scopedInputs = useMemo(() => filterItemsByPS(inputs, activePSValue), [inputs, activePSValue]);
+  const scopedTickets = useMemo(() => filterItemsByPS(tickets, activePSValue), [tickets, activePSValue]);
+  const scopedPayments = useMemo(() => filterItemsByPS(payments, activePSValue), [payments, activePSValue]);
 
   useEffect(() => {
     const clearPrintMode = () => {
@@ -44,9 +50,39 @@ function Reports() {
   const toggleSale = (sale) => {
     setSelectedSales(prev => prev.includes(sale) ? prev.filter(s => s !== sale) : [...prev, sale]);
   };
+
+  const toggleSaleExpansion = (sale) => {
+    setExpandedSales(prev => ({ ...prev, [sale]: !prev[sale] }));
+  };
+
+  const availableSales = useMemo(() => {
+    return Array.from(
+      new Set(
+        scopedTickets
+          .map(t => t.saleNumber)
+          .filter(Boolean)
+      )
+    );
+  }, [scopedTickets]);
+
+  useEffect(() => {
+    if (selectedSales.length !== 1) {
+      return;
+    }
+
+    setExpandedSales((previous) => {
+      const nextExpanded = {};
+      Object.keys(previous).forEach((key) => {
+        if (key.endsWith(`::${selectedSales[0]}`)) {
+          nextExpanded[key] = true;
+        }
+      });
+      return nextExpanded;
+    });
+  }, [selectedSales]);
   
   const getFarmerName = (id) => {
-    const f = farmers.find(f => f.id === id);
+    const f = scopedFarmers.find(f => f.id === id) || farmers.find(f => f.id === id);
     return f ? `${f.farmerNumber} - ${f.firstName} ${f.lastName}` : 'Unknown';
   };
 
@@ -72,21 +108,22 @@ function Reports() {
   };
 
   const renderFarmersReport = () => {
-    let data = farmers.filter(f => activePSValue === 'All' || f.ps === activePSValue);
+    let data = [...scopedFarmers];
     if (seasonFilter) data = data.filter(f => f.seasonId === seasonFilter || f.season === seasonFilter);
+    const formatVolumeKg = (value) => `${Math.round(parseFloat(value || 0))} kgs`;
     const headers = ['Farmer #', 'Full Name', 'Gender', 'Village', 'Phone', 'Hectares', 'Vol(Kg)', 'Season', 'PS'];
     return {
       headers,
       rows: data.map(f => [
         f.farmerNumber, `${f.firstName} ${f.lastName}`, f.gender || '-', f.village, f.phoneNumber || '-', 
-        f.hectares || '0', f.contractedVolume || '0', f.seasonName || f.season || '-', f.ps
+        f.hectares || '0', formatVolumeKg(f.contractedVolume), f.seasonName || f.season || '-', f.ps
       ]),
       title: 'Farmer Registration List'
     };
   };
 
   const renderInputsReport = () => {
-    let data = inputs.filter(i => activePSValue === 'All' || i.ps === activePSValue);
+    let data = [...scopedInputs];
     const headers = ['Issue Date', 'Farmer', 'Input Item', 'Quantity', 'Total Cost (USD)', 'PS'];
     return {
       headers,
@@ -103,7 +140,7 @@ function Reports() {
   };
 
   const renderGradesReport = () => {
-    let data = tickets.filter(t => activePSValue === 'All' || t.ps === activePSValue);
+    let data = [...scopedTickets];
     const gradeStats = data.reduce((acc, t) => {
       const code = t.grade_code || t.gCode || 'Unknown';
       if (!acc[code]) {
@@ -129,7 +166,7 @@ function Reports() {
   };
 
   const renderPremiumReport = () => {
-    const data = tickets.filter(t => activePSValue === 'All' || t.ps === activePSValue);
+    const data = scopedTickets;
     const farmerStats = data.reduce((acc, t) => {
       const fId = t.farmerId;
       if (!acc[fId]) {
@@ -159,13 +196,13 @@ function Reports() {
       return g ? g.is_quality_grade === 1 : true;
     };
 
-    const qTicks = tickets.filter(t => isQuality(t) && (activePSValue === 'All' || t.ps === activePSValue));
+    const qTicks = scopedTickets.filter(t => isQuality(t));
     const pTicks = qTicks.filter(t => t.grade_code && t.grade_code.endsWith('OF'));
     const sTicks = qTicks.filter(t => t.grade_code && t.grade_code.includes('O') && !t.grade_code.endsWith('OF'));
     const rTicks = qTicks.filter(t => t.grade_code === 'REJ' || t.quality_level === 'Reject');
     
-    const canTicks = tickets.filter(t => t.grade_code === 'CAN' && (activePSValue === 'All' || t.ps === activePSValue));
-    const witTicks = tickets.filter(t => t.grade_code === 'WIT' && (activePSValue === 'All' || t.ps === activePSValue));
+    const canTicks = scopedTickets.filter(t => t.grade_code === 'CAN');
+    const witTicks = scopedTickets.filter(t => t.grade_code === 'WIT');
 
     const pStat = { count: pTicks.length, weight: pTicks.reduce((s,t) => s + parseFloat(t.netWeight || t.mass || 0), 0) };
     const sStat = { count: sTicks.length, weight: sTicks.reduce((s,t) => s + parseFloat(t.netWeight || t.mass || 0), 0) };
@@ -210,7 +247,7 @@ function Reports() {
   };
 
   const renderPaymentsReport = () => {
-    let data = payments.filter(p => activePSValue === 'All' || p.ps === activePSValue);
+    let data = [...scopedPayments];
     const headers = ['Date', 'Farmer', 'Tobacco (USD)', 'Inputs (USD)', 'Net USD', 'Rate', 'Net TZS', 'PS'];
     return {
       headers,
@@ -228,29 +265,85 @@ function Reports() {
     };
   };
 
-  const getSalesAccordionData = () => {
-    let data = tickets.filter(t => activePSValue === 'All' || t.ps === activePSValue);
-    if (selectedSales.length > 0) data = data.filter(t => selectedSales.includes(t.saleNumber));
+  const salesSummaryData = useMemo(() => {
+    let data = [...scopedTickets];
+    if (selectedSales.length > 0) {
+      data = data.filter(ticket => selectedSales.includes(ticket.saleNumber));
+    }
+
     const salesMap = {};
-    data.forEach(t => {
-      const saleNum = t.saleNumber;
-      if (!salesMap[saleNum]) salesMap[saleNum] = { saleNumber: saleNum, tickets: [], mass: 0, value: 0, marketCenter: t.marketCenterName || t.marketCenter || '-' };
-      salesMap[saleNum].tickets.push(t);
-      salesMap[saleNum].mass += parseFloat(t.netWeight || t.mass || 0);
-      salesMap[saleNum].value += parseFloat(t.totalValue || t.value || 0);
+
+    data.forEach((ticket) => {
+      const marketCenter = ticket.marketCenterName || ticket.marketCenter || '-';
+      const saleNumber = ticket.saleNumber || '-';
+      const rowKey = `${marketCenter}::${saleNumber}`;
+
+      if (!salesMap[rowKey]) {
+        salesMap[rowKey] = {
+          rowKey,
+          marketCenter,
+          saleNumber,
+          bales: 0,
+          massPurchased: 0,
+          valuePurchased: 0,
+          tickets: [],
+        };
+      }
+
+      salesMap[rowKey].bales += 1;
+      salesMap[rowKey].massPurchased += parseFloat(ticket.netWeight || ticket.mass || 0);
+      salesMap[rowKey].valuePurchased += parseFloat(ticket.totalValue || ticket.value || 0);
+      salesMap[rowKey].tickets.push(ticket);
     });
-    return Object.values(salesMap).map(sale => {
-      const farmerMap = {};
-      sale.tickets.forEach(t => {
-        const fKey = t.farmerId;
-        if (!farmerMap[fKey]) farmerMap[fKey] = { name: getFarmerName(t.farmerId), bales: 0, mass: 0, value: 0 };
-        farmerMap[fKey].bales += 1;
-        farmerMap[fKey].mass += parseFloat(t.netWeight || t.mass || 0);
-        farmerMap[fKey].value += parseFloat(t.totalValue || t.value || 0);
+
+    return Object.values(salesMap)
+      .map((sale) => {
+        const pcnMap = {};
+
+        sale.tickets.forEach((ticket) => {
+          const pcnNumber = ticket.pcnNumber || 'Unassigned';
+          if (!pcnMap[pcnNumber]) {
+            pcnMap[pcnNumber] = {
+              pcnNumber,
+              bales: 0,
+              mass: 0,
+              value: 0,
+              farmers: new Set(),
+            };
+          }
+
+          pcnMap[pcnNumber].bales += 1;
+          pcnMap[pcnNumber].mass += parseFloat(ticket.netWeight || ticket.mass || 0);
+          pcnMap[pcnNumber].value += parseFloat(ticket.totalValue || ticket.value || 0);
+          if (ticket.farmerId) {
+            pcnMap[pcnNumber].farmers.add(ticket.farmerId);
+          }
+        });
+
+        const pcns = Object.values(pcnMap)
+          .map((pcn) => ({
+            ...pcn,
+            farmers: pcn.farmers.size,
+          }))
+          .sort((left, right) => {
+            if (left.pcnNumber === 'Unassigned') return 1;
+            if (right.pcnNumber === 'Unassigned') return -1;
+            return left.pcnNumber.localeCompare(right.pcnNumber, undefined, { numeric: true });
+          });
+
+        return {
+          ...sale,
+          averagePrice: sale.massPurchased > 0 ? sale.valuePurchased / sale.massPurchased : 0,
+          pcns,
+        };
+      })
+      .sort((left, right) => {
+        if (left.marketCenter !== right.marketCenter) {
+          return left.marketCenter.localeCompare(right.marketCenter);
+        }
+        return String(left.saleNumber).localeCompare(String(right.saleNumber), undefined, { numeric: true });
       });
-      return { ...sale, farmers: Object.values(farmerMap) };
-    });
-  };
+  }, [scopedTickets, selectedSales]);
 
   let currentReport = { title: '', headers: [], rows: [] };
   if (reportType === 'farmers') currentReport = renderFarmersReport();
@@ -261,10 +354,16 @@ function Reports() {
 
   const handleExport = () => {
     if (reportType === 'sales') {
-      const headers = ['Sale', 'Market', 'Farmer', 'Bales', 'Mass', 'Value'];
-      const rows = [];
-      getSalesAccordionData().forEach(s => s.farmers.forEach(f => rows.push([s.saleNumber, s.marketCenter, f.name, f.bales, f.mass.toFixed(2), formatUsd(f.value)])));
-      exportToCSV('Sales_Detailed', [headers, ...rows]);
+      const headers = ['Market Center', 'Sale Number', 'Bales', 'Mass Purchased', 'Value Purchased', 'Average Price'];
+      const rows = salesSummaryData.map((sale) => [
+        sale.marketCenter,
+        sale.saleNumber,
+        sale.bales,
+        sale.massPurchased.toFixed(2),
+        formatUsd(sale.valuePurchased),
+        formatUsd(sale.averagePrice),
+      ]);
+      exportToCSV('Tobacco_Sales_Summary', [headers, ...rows]);
     } else {
       exportToCSV(currentReport.title.replace(/ /g, '_'), [currentReport.headers, ...currentReport.rows]);
     }
@@ -305,9 +404,37 @@ function Reports() {
         <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
           <h3 className="font-bold flex items-center space-x-2">
             <FileSpreadsheet className="w-5 h-5 text-green-600" />
-            <span>{reportType === 'sales' ? 'Detailed Tobacco Sales' : currentReport.title}</span>
+            <span>{reportType === 'sales' ? 'Tobacco Sales Summary' : currentReport.title}</span>
           </h3>
           <div className="flex items-center gap-3 print:hidden">
+            {reportType === 'sales' && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowSalesMenu(v => !v)}
+                  className="px-3 py-1.5 text-xs border rounded-lg dark:bg-gray-700"
+                >
+                  {selectedSales.length > 0 ? `${selectedSales.length} sale(s) selected` : 'All Sales'}
+                </button>
+                {showSalesMenu && (
+                  <div className="absolute right-0 mt-1 w-56 max-h-64 overflow-auto rounded-lg border bg-white dark:bg-gray-800 dark:border-gray-700 shadow-lg z-20 p-2">
+                    {availableSales.length === 0 ? (
+                      <p className="text-xs text-gray-500 px-1 py-2">No sales available</p>
+                    ) : (
+                      availableSales.map(sale => (
+                        <label key={sale} className="flex items-center gap-2 px-1 py-1 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedSales.includes(sale)}
+                            onChange={() => toggleSale(sale)}
+                          />
+                          <span>{sale}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {reportType === 'premium' && renderPremiumSummary()}
             {reportType === 'grades' && (
               <div className="flex gap-2">
@@ -322,20 +449,77 @@ function Reports() {
 
         <div className="overflow-x-auto p-4">
           {reportType === 'sales' ? (
-            <div className="space-y-4">
-              {getSalesAccordionData().map(sale => (
-                <div key={sale.saleNumber} className="border dark:border-gray-700 rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 dark:bg-gray-700/30 px-4 py-2 font-bold text-sm flex justify-between">
-                    <span>Sale #{sale.saleNumber} - {sale.marketCenter}</span>
-                    <span>{sale.mass.toFixed(1)}kg - {formatUsd(sale.value)}</span>
-                  </div>
-                  <table className="w-full text-xs">
-                    <thead><tr className="border-b dark:border-gray-700 opacity-60"><th className="p-2 text-left">Farmer</th><th className="p-2 text-center">Bales</th><th className="p-2 text-right">Mass</th><th className="p-2 text-right">Value</th></tr></thead>
-                    <tbody>{sale.farmers.map((f, i) => (<tr key={i} className="border-b last:border-0 dark:border-gray-700"><td className="p-2 font-medium">{f.name}</td><td className="p-2 text-center">{f.bales}</td><td className="p-2 text-right">{f.mass.toFixed(1)}</td><td className="p-2 text-right">{formatUsd(f.value)}</td></tr>))}</tbody>
-                  </table>
-                </div>
-              ))}
-            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-700/50">
+                <tr>
+                  <th className="p-3 w-12"></th>
+                  <th className="p-3 text-left font-bold uppercase text-[10px]">Market Center</th>
+                  <th className="p-3 text-left font-bold uppercase text-[10px]">Sale Number</th>
+                  <th className="p-3 text-right font-bold uppercase text-[10px]">Bales</th>
+                  <th className="p-3 text-right font-bold uppercase text-[10px]">Mass Purchased</th>
+                  <th className="p-3 text-right font-bold uppercase text-[10px]">Value Purchased</th>
+                  <th className="p-3 text-right font-bold uppercase text-[10px]">Average Price</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y dark:divide-gray-700">
+                {salesSummaryData.map((sale) => (
+                  <React.Fragment key={sale.rowKey}>
+                    <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleSaleExpansion(sale.rowKey)}
+                          className={`rounded-md p-1 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                          aria-label={`Toggle details for sale ${sale.saleNumber}`}
+                        >
+                          {expandedSales[sale.rowKey] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
+                      </td>
+                      <td className="p-3 whitespace-nowrap font-medium">{sale.marketCenter}</td>
+                      <td className="p-3 whitespace-nowrap font-semibold text-green-600 dark:text-green-400">{sale.saleNumber}</td>
+                      <td className="p-3 text-right whitespace-nowrap">{sale.bales}</td>
+                      <td className="p-3 text-right whitespace-nowrap">{sale.massPurchased.toFixed(2)} Kg</td>
+                      <td className="p-3 text-right whitespace-nowrap">{formatUsd(sale.valuePurchased)}</td>
+                      <td className="p-3 text-right whitespace-nowrap">{formatUsd(sale.averagePrice)}</td>
+                    </tr>
+                    {expandedSales[sale.rowKey] && (
+                      <tr>
+                        <td colSpan="7" className="p-0">
+                          <div className={`border-t ${darkMode ? 'border-gray-700 bg-gray-900/30' : 'border-gray-100 bg-gray-50/60'} px-4 py-3`}>
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-wide opacity-70">Drill Down</p>
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b dark:border-gray-700 opacity-70">
+                                  <th className="p-2 text-left">PCN Number</th>
+                                  <th className="p-2 text-right">Bales</th>
+                                  <th className="p-2 text-right">Mass</th>
+                                  <th className="p-2 text-right">Value</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {sale.pcns.map((pcn) => (
+                                  <tr key={pcn.pcnNumber} className="border-b last:border-0 dark:border-gray-700">
+                                    <td className="p-2 font-medium">{pcn.pcnNumber}</td>
+                                    <td className="p-2 text-right">{pcn.bales}</td>
+                                    <td className="p-2 text-right">{pcn.mass.toFixed(2)} Kg</td>
+                                    <td className="p-2 text-right">{formatUsd(pcn.value)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+                {salesSummaryData.length === 0 && (
+                  <tr>
+                    <td colSpan="7" className="p-3 text-sm text-gray-500">No sales to display for the selected filters.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-700/50">

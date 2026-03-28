@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useStorage } from './hooks/useStorage';
 import { Download, FileText, Plus, Save, Search } from 'lucide-react';
+import { filterItemsByPS, getScopedPS } from './utils';
 
 function PaymentModule() {
   const { darkMode, currentUser, activePS } = useAppContext();
@@ -10,11 +11,15 @@ function PaymentModule() {
   const { items: inputs } = useStorage('issuedinput');
   const { items: inputTypes } = useStorage('inputtype');
   const { items: seasons } = useStorage('season');
+  const { items: saleNumbers } = useStorage('salenumber');
+  const { items: payments, refreshItems: refreshPayments } = useStorage('payment');
 
   const role = (currentUser?.role || '').toLowerCase();
   const isSupervisor = role === 'admin' || role === 'supervisor';
+  const scopedPS = getScopedPS(currentUser, activePS);
 
   const [selectedSeason, setSelectedSeason] = useState('');
+  const [psFilter, setPsFilter] = useState('All');
   const [search, setSearch] = useState('');
 
   const [exchangeRates, setExchangeRates] = useState({ byPs: {} });
@@ -28,12 +33,27 @@ function PaymentModule() {
   const [showDeductionForm, setShowDeductionForm] = useState(false);
   const [deductionForm, setDeductionForm] = useState({ name: '', amount: '', type: 'Per Farmer' });
   const [savingDeduction, setSavingDeduction] = useState(false);
+  const [selectedFarmerIds, setSelectedFarmerIds] = useState([]);
+  const [savingPayments, setSavingPayments] = useState(false);
+  const [lastPaidRows, setLastPaidRows] = useState([]);
+  const [lastPaidAt, setLastPaidAt] = useState('');
+  const [pendingFarmerPrint, setPendingFarmerPrint] = useState(false);
+  const PAYMENT_EPSILON = 0.01;
 
   useEffect(() => {
     if (seasons.length && !selectedSeason) {
-      setSelectedSeason(seasons[0].name || seasons[0].id);
+      setSelectedSeason(seasons[0].id || seasons[0].name);
     }
   }, [seasons, selectedSeason]);
+
+  useEffect(() => {
+    if (isSupervisor) {
+      setPsFilter(scopedPS && scopedPS !== 'All' ? scopedPS : 'All');
+      return;
+    }
+
+    setPsFilter(scopedPS || 'All');
+  }, [isSupervisor, scopedPS]);
 
   useEffect(() => {
     const defaultPs = (activePS && activePS !== 'All')
@@ -58,6 +78,7 @@ function PaymentModule() {
   useEffect(() => {
     const clearPrintMode = () => {
       document.body.classList.remove('printing-payment-only');
+      document.body.classList.remove('printing-farmer-payment-only');
     };
 
     window.addEventListener('afterprint', clearPrintMode);
@@ -152,17 +173,48 @@ function PaymentModule() {
 
   const filteredFarmers = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const scoped = isSupervisor
-      ? farmers
-      : farmers.filter(f => f.ps === (activePS || currentUser.ps));
+    const scoped = filterItemsByPS(farmers, scopedPS);
+    const psScoped = (isSupervisor && psFilter !== 'All')
+      ? scoped.filter(f => f.ps === psFilter)
+      : scoped;
 
-    if (!q) return scoped;
-    return scoped.filter(f =>
+    if (!q) return psScoped;
+    return psScoped.filter(f =>
       `${f.farmerNumber || ''} ${f.firstName || ''} ${f.lastName || ''} ${f.ps || ''}`
         .toLowerCase()
         .includes(q)
     );
-  }, [farmers, search, isSupervisor, activePS, currentUser]);
+  }, [farmers, search, scopedPS, isSupervisor, psFilter]);
+
+  const availablePsFilters = useMemo(() => {
+    const scoped = filterItemsByPS(farmers, scopedPS);
+    return Array.from(new Set(scoped.map(f => f.ps).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [farmers, scopedPS]);
+
+  const selectedSeasonObj = useMemo(() => (
+    seasons.find(s => s.id === selectedSeason || s.name === selectedSeason) || null
+  ), [seasons, selectedSeason]);
+
+  const selectedSeasonId = selectedSeasonObj?.id || '';
+
+  const selectedSeasonSaleNumberIds = useMemo(() => {
+    if (!selectedSeasonId) return new Set();
+    return new Set(
+      saleNumbers
+        .filter(sn => sn.seasonId === selectedSeasonId)
+        .map(sn => sn.id)
+    );
+  }, [saleNumbers, selectedSeasonId]);
+
+  const seasonScopedTickets = useMemo(() => {
+    if (!selectedSeasonId) return tickets;
+
+    if (selectedSeasonSaleNumberIds.size > 0) {
+      return tickets.filter(t => selectedSeasonSaleNumberIds.has(t.saleNumberId));
+    }
+
+    return tickets.filter(t => t.seasonId === selectedSeasonId || t.season === selectedSeasonObj?.name || t.season === selectedSeason);
+  }, [tickets, selectedSeasonId, selectedSeasonSaleNumberIds, selectedSeasonObj, selectedSeason]);
 
   const rows = useMemo(() => {
     const calculateDeductionAmount = (deduction, mass) => {
@@ -174,8 +226,8 @@ function PaymentModule() {
       return amount;
     };
 
-    return filteredFarmers.map((farmer) => {
-      const farmerTickets = tickets.filter(t => t.farmerId === farmer.id);
+    const mappedRows = filteredFarmers.map((farmer) => {
+      const farmerTickets = seasonScopedTickets.filter(t => t.farmerId === farmer.id);
       const farmerInputs = inputs.filter(i => i.farmerId === farmer.id);
 
       const mass = farmerTickets.reduce((sum, t) => sum + parseFloat(t.mass || t.netWeight || 0), 0);
@@ -217,7 +269,200 @@ function PaymentModule() {
         malipoHalisi
       };
     });
-  }, [filteredFarmers, tickets, inputs, inputTypes, exchangeRates, deductions, globalRate]);
+
+    if (!selectedSeasonId) {
+      return mappedRows;
+    }
+
+    return mappedRows.filter(row => row.mass > 0 || row.sales > 0 || Object.keys(row.inputByType).length > 0);
+  }, [filteredFarmers, seasonScopedTickets, inputs, inputTypes, exchangeRates, deductions, globalRate, selectedSeasonId]);
+
+  useEffect(() => {
+    const validIds = new Set(rows.map(row => row.farmer.id));
+    setSelectedFarmerIds(prev => prev.filter(id => validIds.has(id)));
+  }, [rows]);
+
+  const visibleRowIds = useMemo(() => rows.map(row => row.farmer.id), [rows]);
+  const allVisibleSelected = visibleRowIds.length > 0 && visibleRowIds.every(id => selectedFarmerIds.includes(id));
+
+  const farmerPaidTotals = useMemo(() => {
+    const totals = {};
+    for (const payment of payments) {
+      if (payment?.farmerId) {
+        totals[payment.farmerId] = (totals[payment.farmerId] || 0) + parseFloat(payment.netPayment || 0);
+      }
+    }
+    return totals;
+  }, [payments]);
+
+  const paidFarmerIds = useMemo(() => {
+    const ids = new Set();
+    Object.entries(farmerPaidTotals).forEach(([farmerId, paid]) => {
+      if (paid > PAYMENT_EPSILON) {
+        ids.add(farmerId);
+      }
+    });
+    return ids;
+  }, [farmerPaidTotals]);
+
+  const paidInViewCount = useMemo(
+    () => rows.filter(row => paidFarmerIds.has(row.farmer.id)).length,
+    [rows, paidFarmerIds]
+  );
+
+  const totalPaidToDateInView = useMemo(
+    () => rows.reduce((sum, row) => sum + parseFloat(farmerPaidTotals[row.farmer.id] || 0), 0),
+    [rows, farmerPaidTotals]
+  );
+
+  const totalRemainingInView = useMemo(
+    () => rows.reduce((sum, row) => sum + (parseFloat(row.malipoHalisi || 0) - parseFloat(farmerPaidTotals[row.farmer.id] || 0)), 0),
+    [rows, farmerPaidTotals]
+  );
+
+  const toggleRowSelection = (farmerId) => {
+    setSelectedFarmerIds(prev => (
+      prev.includes(farmerId)
+        ? prev.filter(id => id !== farmerId)
+        : [...prev, farmerId]
+    ));
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedFarmerIds(prev => prev.filter(id => !visibleRowIds.includes(id)));
+      return;
+    }
+    setSelectedFarmerIds(Array.from(new Set([...selectedFarmerIds, ...visibleRowIds])));
+  };
+
+  const createPaymentPayload = (row, amountToPay) => {
+    const inputDeduction = Object.values(row.inputByType || {}).reduce((sum, value) => sum + parseFloat(value || 0), 0);
+    return {
+      farmerId: row.farmer.id,
+      pcnId: null,
+      tobaccoAmount: parseFloat(row.sales || 0),
+      inputDeduction,
+      usdBalance: parseFloat(row.usdBaki || 0),
+      exchangeRate: parseFloat(row.rate || 0),
+      tzsGross: parseFloat(row.grossTzs || 0),
+      levy: parseFloat(row.deductionByName?.LEVY || 0),
+      adminFee: parseFloat(row.deductionByName?.ADMIN_FEE || row.deductionByName?.['ADMIN FEE'] || 0),
+      totalDeductions: parseFloat(row.totalTzsDeductions || 0),
+      netPayment: parseFloat(amountToPay || 0),
+      paymentDate: new Date().toISOString().slice(0, 10),
+      ps: row.farmer.ps
+    };
+  };
+
+  const printPaidBatch = () => {
+    document.body.classList.add('printing-farmer-payment-only');
+    window.print();
+  };
+
+  useEffect(() => {
+    if (!pendingFarmerPrint) return;
+    if (lastPaidRows.length === 0) return;
+
+    const timer = setTimeout(() => {
+      printPaidBatch();
+      setPendingFarmerPrint(false);
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [pendingFarmerPrint, lastPaidRows]);
+
+  const payFarmers = async (rowsToPay) => {
+    if (!isSupervisor) {
+      alert('Only supervisors can initiate payments');
+      return;
+    }
+
+    if (!rowsToPay.length) {
+      alert('Select at least one farmer to pay');
+      return;
+    }
+
+    setSavingPayments(true);
+    try {
+      const paidNowRows = [];
+      const alreadyPaidRows = [];
+      const overpaidRows = [];
+
+      for (const row of rowsToPay) {
+        const currentNet = parseFloat(row.malipoHalisi || 0);
+        const previouslyPaid = parseFloat(farmerPaidTotals[row.farmer.id] || 0);
+        const differenceToPay = currentNet - previouslyPaid;
+
+        if (Math.abs(differenceToPay) < PAYMENT_EPSILON) {
+          alreadyPaidRows.push(row);
+          continue;
+        }
+
+        if (differenceToPay < 0) {
+          overpaidRows.push({ row, overpaidBy: Math.abs(differenceToPay) });
+          continue;
+        }
+
+        const payload = createPaymentPayload(row, differenceToPay);
+        await window.api.request('/payments', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+
+        paidNowRows.push({
+          ...row,
+          amountPaidNow: differenceToPay,
+          previouslyPaid,
+          currentNet
+        });
+      }
+
+      if (refreshPayments) {
+        await refreshPayments();
+      }
+
+      if (paidNowRows.length === 0) {
+        const messages = [];
+        if (alreadyPaidRows.length > 0) {
+          messages.push(`${alreadyPaidRows.length} farmer(s) already fully paid.`);
+        }
+        if (overpaidRows.length > 0) {
+          messages.push(`${overpaidRows.length} farmer(s) already overpaid.`);
+        }
+        alert(messages.join(' ') || 'No payment was made.');
+      } else {
+        const paidAt = new Date().toISOString();
+        setLastPaidRows(paidNowRows);
+        setLastPaidAt(paidAt);
+        setSelectedFarmerIds([]);
+
+        const summary = [`Payment successful for ${paidNowRows.length} farmer(s).`];
+        if (alreadyPaidRows.length > 0) {
+          summary.push(`${alreadyPaidRows.length} already fully paid.`);
+        }
+        if (overpaidRows.length > 0) {
+          summary.push(`${overpaidRows.length} overpaid (skipped).`);
+        }
+
+        alert(summary.join(' '));
+        setPendingFarmerPrint(true);
+      }
+    } catch (e) {
+      alert('Failed to complete payment: ' + e.message);
+    }
+    setSavingPayments(false);
+  };
+
+  const paySelectedFarmers = async () => {
+    const rowMap = new Map(rows.map(row => [row.farmer.id, row]));
+    const selectedRows = selectedFarmerIds.map(id => rowMap.get(id)).filter(Boolean);
+    await payFarmers(selectedRows);
+  };
+
+  const paySingleFarmer = async (row) => {
+    await payFarmers([row]);
+  };
 
   const inputColumns = useMemo(() => {
     const set = new Set();
@@ -256,7 +501,7 @@ function PaymentModule() {
   const currentDeductionRows = deductions.byPs?.[deductionPs] || [];
 
   const selectedSeasonLabel = useMemo(() => {
-    const seasonMatch = seasons.find(s => (s.name || s.id) === selectedSeason || s.id === selectedSeason);
+    const seasonMatch = seasons.find(s => s.id === selectedSeason || s.name === selectedSeason);
     return seasonMatch?.name || selectedSeason || '-';
   }, [seasons, selectedSeason]);
 
@@ -303,8 +548,18 @@ function PaymentModule() {
             onChange={(e) => setSelectedSeason(e.target.value)}
             className={`px-3 py-2 border rounded-lg min-w-[200px] ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'}`}
           >
-            {seasons.map(s => <option key={s.id} value={s.name || s.id}>{s.name || s.id}</option>)}
+            {seasons.map(s => <option key={s.id} value={s.id || s.name}>{s.name || s.id}</option>)}
           </select>
+          {isSupervisor && (
+            <select
+              value={psFilter}
+              onChange={(e) => setPsFilter(e.target.value)}
+              className={`px-3 py-2 border rounded-lg min-w-[200px] ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'}`}
+            >
+              <option value="All">All PS</option>
+              {availablePsFilters.map(ps => <option key={ps} value={ps}>{ps}</option>)}
+            </select>
+          )}
           <button onClick={exportCSV} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-green-600 border-green-400">
             <Download className="w-4 h-4" /> Excel
           </button>
@@ -485,6 +740,21 @@ function PaymentModule() {
         />
       </div>
 
+      {isSupervisor && (
+        <div className="payment-print-hide mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            Selected Farmers: <strong>{selectedFarmerIds.length}</strong> · Paid in View: <strong>{paidInViewCount}</strong>
+          </p>
+          <button
+            onClick={paySelectedFarmers}
+            disabled={savingPayments || selectedFarmerIds.length === 0}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {savingPayments ? 'Processing...' : `Pay Selected & Print (${selectedFarmerIds.length})`}
+          </button>
+        </div>
+      )}
+
       <div className="payment-print-only payment-print-title hidden mb-4 text-black">
         <h2 className="text-xl font-bold">Tobacco Sales - Payments Report</h2>
         <p className="text-sm mt-1">Season: {selectedSeasonLabel}</p>
@@ -494,6 +764,11 @@ function PaymentModule() {
         <table className="payment-print-table w-full text-xs min-w-[1100px]">
           <thead>
             <tr>
+              {isSupervisor && (
+                <th className="px-3 py-2 text-center bg-emerald-700 text-white font-semibold payment-print-hide">
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} />
+                </th>
+              )}
               <th className="px-3 py-2 text-left bg-emerald-700 text-white font-semibold">Farmer #</th>
               <th className="px-3 py-2 text-left bg-emerald-700 text-white font-semibold">Name</th>
               <th className="px-3 py-2 text-left bg-emerald-700 text-white font-semibold">Society</th>
@@ -508,13 +783,34 @@ function PaymentModule() {
                 <th key={col} className="px-3 py-2 text-right bg-violet-700 text-white font-semibold">{col}</th>
               ))}
               <th className="px-3 py-2 text-right bg-emerald-950 text-white font-semibold">NET TZS</th>
+              <th className="px-3 py-2 text-right bg-emerald-900 text-white font-semibold">Paid to Date (TZS)</th>
+              <th className="px-3 py-2 text-right bg-emerald-900 text-white font-semibold">Remaining (TZS)</th>
+              {isSupervisor && <th className="px-3 py-2 text-right bg-emerald-950 text-white font-semibold payment-print-hide">Action</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
             {rows.map((row) => (
               <tr key={row.farmer.id} className={darkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}>
+                {isSupervisor && (
+                  <td className="px-3 py-2 text-center payment-print-hide">
+                    <input
+                      type="checkbox"
+                      checked={selectedFarmerIds.includes(row.farmer.id)}
+                      onChange={() => toggleRowSelection(row.farmer.id)}
+                    />
+                  </td>
+                )}
                 <td className="px-3 py-2">{row.farmer.farmerNumber || '-'}</td>
-                <td className="px-3 py-2">{`${row.farmer.firstName || ''} ${row.farmer.lastName || ''}`.trim()}</td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span>{`${row.farmer.firstName || ''} ${row.farmer.lastName || ''}`.trim()}</span>
+                    {paidFarmerIds.has(row.farmer.id) && (
+                      <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                        PAID
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td className="px-3 py-2">{row.farmer.ps}</td>
                 <td className="px-3 py-2 text-right">{row.mass.toFixed(2)}</td>
                 <td className="px-3 py-2 text-right">{formatUsd(row.sales)}</td>
@@ -531,10 +827,25 @@ function PaymentModule() {
                   </td>
                 ))}
                 <td className="px-3 py-2 text-right font-semibold">{formatTzs(row.malipoHalisi)}</td>
+                <td className="px-3 py-2 text-right">{formatTzs(farmerPaidTotals[row.farmer.id] || 0)}</td>
+                <td className={`px-3 py-2 text-right font-medium ${(parseFloat(row.malipoHalisi || 0) - parseFloat(farmerPaidTotals[row.farmer.id] || 0)) > PAYMENT_EPSILON ? 'text-emerald-600' : 'text-blue-600'}`}>
+                  {formatTzs(parseFloat(row.malipoHalisi || 0) - parseFloat(farmerPaidTotals[row.farmer.id] || 0))}
+                </td>
+                {isSupervisor && (
+                  <td className="px-3 py-2 text-right payment-print-hide">
+                    <button
+                      onClick={() => paySingleFarmer(row)}
+                      disabled={savingPayments}
+                      className={`px-3 py-1.5 rounded-lg text-white ${paidFarmerIds.has(row.farmer.id) ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'} disabled:opacity-50`}
+                    >
+                      {paidFarmerIds.has(row.farmer.id) ? 'Pay Again' : 'Pay'}
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
             <tr className="bg-slate-900 text-white font-bold">
-              <td className="px-3 py-2" colSpan={3}>TOTAL</td>
+              <td className="px-3 py-2" colSpan={isSupervisor ? 4 : 3}>TOTAL</td>
               <td className="px-3 py-2 text-right">{totals.mass.toFixed(2)}</td>
               <td className="px-3 py-2 text-right">{formatUsd(totals.sales)}</td>
               {inputColumns.map(col => (
@@ -546,15 +857,49 @@ function PaymentModule() {
                 <td key={`total-ded-${col}`} className="px-3 py-2 text-right">{formatTzsDeduction(totals.deductionByName[col] || 0)}</td>
               ))}
               <td className="px-3 py-2 text-right">{formatTzs(totals.malipoHalisi)}</td>
+              <td className="px-3 py-2 text-right">{formatTzs(totalPaidToDateInView)}</td>
+              <td className="px-3 py-2 text-right">{formatTzs(totalRemainingInView)}</td>
+              {isSupervisor && <td className="px-3 py-2 payment-print-hide"></td>}
             </tr>
             {rows.length === 0 && (
               <tr>
-                <td className="px-3 py-8 text-center text-gray-500" colSpan={8 + inputColumns.length + deductionColumns.length}>No farmer rows to display</td>
+                <td className="px-3 py-8 text-center text-gray-500" colSpan={(isSupervisor ? 12 : 10) + inputColumns.length + deductionColumns.length}>No farmer rows to display</td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {lastPaidRows.length > 0 && (
+        <div className="payment-print-only farmer-payment-print-only hidden mt-6 text-black">
+          <h2 className="text-xl font-bold">Farmer Payment Receipt</h2>
+          <p className="text-sm mt-1">Season: {selectedSeasonLabel}</p>
+          <p className="text-sm mt-1">Generated: {new Date(lastPaidAt).toLocaleString()}</p>
+
+          <table className="w-full text-xs mt-4 border border-black">
+            <thead>
+              <tr>
+                <th className="border border-black px-2 py-1 text-left">Farmer #</th>
+                <th className="border border-black px-2 py-1 text-left">Farmer Name</th>
+                <th className="border border-black px-2 py-1 text-left">PS</th>
+                <th className="border border-black px-2 py-1 text-right">USD Baki</th>
+                <th className="border border-black px-2 py-1 text-right">Net Payment (TZS)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lastPaidRows.map((row) => (
+                <tr key={`receipt-${row.farmer.id}`}>
+                  <td className="border border-black px-2 py-1">{row.farmer.farmerNumber || '-'}</td>
+                  <td className="border border-black px-2 py-1">{`${row.farmer.firstName || ''} ${row.farmer.lastName || ''}`.trim()}</td>
+                  <td className="border border-black px-2 py-1">{row.farmer.ps || '-'}</td>
+                  <td className="border border-black px-2 py-1 text-right">{formatUsd(row.usdBaki)}</td>
+                  <td className="border border-black px-2 py-1 text-right">{formatTzs(row.amountPaidNow ?? row.malipoHalisi)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="payment-print-only payment-print-signatures hidden mt-10 text-black">
         <div className="grid grid-cols-2 gap-10">

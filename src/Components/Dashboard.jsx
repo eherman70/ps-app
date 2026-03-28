@@ -1,33 +1,30 @@
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { Users, Calendar, FileText, LayoutDashboard, Leaf, Cloud, Heart, Folder, Share2, MoreHorizontal, Plus } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { useStorage } from '../hooks/useStorage';
+import { filterItemsByPS, getScopedPS } from '../utils';
 
 function Dashboard() {
-  const { darkMode, setActiveModule } = useAppContext();
-  const [stats, setStats] = useState({ farmers: 0, seasons: 0, grades: 0, inputs: 0, tickets: 0 });
+  const { darkMode, setActiveModule, currentUser, activePS } = useAppContext();
+  const { items: farmers } = useStorage('farmer');
+  const { items: seasons } = useStorage('season');
+  const { items: grades } = useStorage('grade');
+  const { items: issuedInputs } = useStorage('issuedinput');
+  const { items: tickets } = useStorage('ticket');
 
-  useEffect(() => {
-    const loadStats = async () => {
-      try {
-        let farmers = 0, seasons = 0, grades = 0, inputs = 0, tickets = 0;
-        const fKeys = await window.storage.list('farmer_');
-        if (fKeys?.keys) farmers = fKeys.keys.length;
-        const sKeys = await window.storage.list('season_');
-        if (sKeys?.keys) seasons = sKeys.keys.length;
-        const gKeys = await window.storage.list('grade_');
-        if (gKeys?.keys) grades = gKeys.keys.length;
-        const iKeys = await window.storage.list('issuedinput_');
-        if (iKeys?.keys) inputs = iKeys.keys.length;
-        const tKeys = await window.storage.list('ticket_');
-        if (tKeys?.keys) tickets = tKeys.keys.length;
-        
-        setStats({ farmers, seasons, grades, inputs, tickets });
-      } catch (error) {
-        console.error('Stats error:', error);
-      }
-    };
-    loadStats();
-  }, []);
+  const scopedPS = getScopedPS(currentUser, activePS);
+
+  const scopedFarmers = useMemo(() => filterItemsByPS(farmers, scopedPS), [farmers, scopedPS]);
+  const scopedInputs = useMemo(() => filterItemsByPS(issuedInputs, scopedPS), [issuedInputs, scopedPS]);
+  const scopedTickets = useMemo(() => filterItemsByPS(tickets, scopedPS), [tickets, scopedPS]);
+
+  const stats = useMemo(() => ({
+    farmers: scopedFarmers.length,
+    seasons: seasons.length,
+    grades: grades.length,
+    inputs: scopedInputs.length,
+    tickets: scopedTickets.length,
+  }), [scopedFarmers.length, seasons.length, grades.length, scopedInputs.length, scopedTickets.length]);
 
   const categories = [
     { label: 'Farmers', value: stats.farmers, icon: Users, color: 'bg-indigo-500' },

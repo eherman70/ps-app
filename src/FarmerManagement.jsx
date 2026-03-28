@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useStorage } from './hooks/useStorage';
 import { Plus, Edit, Trash2, X, Search, Upload, FileDown } from 'lucide-react';
-import { parseCSV, generateCSV, downloadCSV } from './utils';
+import { parseCSV, generateCSV, downloadCSV, filterItemsByPS, getScopedPS } from './utils';
 
 function FarmerManagement() {
   const { darkMode, currentUser, activePS, testMode } = useAppContext();
@@ -10,7 +10,7 @@ function FarmerManagement() {
   const { items: seasons } = useStorage('season');
 
   const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
-  const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
+  const activePSValue = getScopedPS(currentUser, activePS);
 
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
@@ -180,8 +180,7 @@ function FarmerManagement() {
     }
   };
 
-  const filteredFarmers = farmers
-    .filter(f => activePSValue === 'All' || f.ps === activePSValue)
+  const filteredFarmers = filterItemsByPS(farmers, activePSValue)
     .filter(f =>
       f.firstName.toLowerCase().includes(search.toLowerCase()) ||
       f.lastName.toLowerCase().includes(search.toLowerCase()) ||

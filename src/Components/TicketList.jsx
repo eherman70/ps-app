@@ -2,16 +2,19 @@ import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { useStorage } from '../hooks/useStorage';
 import { Search, Trash2, Edit3, Filter } from 'lucide-react';
+import { filterItemsByPS, getScopedPS } from '../utils';
 
 function TicketList() {
-  const { darkMode, currentUser } = useAppContext();
+  const { darkMode, currentUser, activePS } = useAppContext();
   const { items: tickets, loading, deleteItem } = useStorage('ticket');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSale, setFilterSale] = useState('');
 
   const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
+  const scopedPS = getScopedPS(currentUser, activePS);
+  const scopedTickets = filterItemsByPS(tickets, scopedPS);
 
-  const filteredTickets = tickets.filter(t => {
+  const filteredTickets = scopedTickets.filter(t => {
     const matchesSearch = 
       t.ticketNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.farmerNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -56,7 +59,7 @@ function TicketList() {
             onChange={(e) => setFilterSale(e.target.value)}
           >
             <option value="">All Sales</option>
-            {Array.from(new Set(tickets.map(t => t.saleNumber))).filter(Boolean).sort().map(sn => (
+            {Array.from(new Set(scopedTickets.map(t => t.saleNumber))).filter(Boolean).sort().map(sn => (
               <option key={sn} value={sn}>Sale #{sn}</option>
             ))}
           </select>

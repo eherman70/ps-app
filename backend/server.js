@@ -556,6 +556,20 @@ function isSupervisor(user) {
   return user.role === 'Supervisor' || user.role === 'Admin';
 }
 
+function canAccessPs(user, recordPs) {
+  if (isSupervisor(user)) {
+    return true;
+  }
+
+  const userPs = user?.ps || 'All';
+  return recordPs === 'All' || recordPs === userPs;
+}
+
+async function getFarmerById(farmerId) {
+  const [rows] = await db.execute('SELECT * FROM farmers WHERE id = ?', [farmerId]);
+  return rows[0] || null;
+}
+
 // Auth middleware
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -1004,6 +1018,15 @@ app.put('/api/farmers/:id', authenticateToken, async (req, res) => {
             idType, idNumber, hectares, contractedVolume, seasonId, status, ps } = req.body;
     const supervisor = isSupervisor(req.user);
     const effectivePs = supervisor ? (ps || 'All') : req.user.ps;
+    const existingFarmer = await getFarmerById(req.params.id);
+
+    if (!existingFarmer) {
+      return res.status(404).json({ error: 'Farmer not found' });
+    }
+
+    if (!canAccessPs(req.user, existingFarmer.ps)) {
+      return res.status(403).json({ error: 'Access denied for this farmer' });
+    }
 
     await db.execute(`UPDATE farmers SET firstName=?, middleName=?, lastName=?, gender=?, age=?, village=?,
                        phoneNumber=?, idType=?, idNumber=?, hectares=?, contractedVolume=?, seasonId=?, ps=?, status=?
@@ -1020,6 +1043,15 @@ app.put('/api/farmers/:id', authenticateToken, async (req, res) => {
 
 app.delete('/api/farmers/:id', authenticateToken, async (req, res) => {
   try {
+    const farmer = await getFarmerById(req.params.id);
+    if (!farmer) {
+      return res.status(404).json({ error: 'Farmer not found' });
+    }
+
+    if (!isSupervisor(req.user) && !canAccessPs(req.user, farmer.ps)) {
+      return res.status(403).json({ error: 'Access denied for this farmer' });
+    }
+
     await db.execute('DELETE FROM farmers WHERE id=?', [req.params.id]);
     res.json({ message: 'Farmer deleted' });
   } catch (error) {
@@ -1202,6 +1234,11 @@ app.get('/api/tickets', authenticateToken, async (req, res) => {
 // Check if a ticket number exists (for duplicate detection)
 app.get('/api/tickets/check/:ticketNumber', authenticateToken, async (req, res) => {
   try {
+    const supervisor = isSupervisor(req.user);
+    const psFilter = req.user.ps || 'All';
+    const whereClause = supervisor ? 'WHERE t.ticketNumber = ?' : "WHERE t.ticketNumber = ? AND (t.ps = 'All' OR t.ps = ?)";
+    const params = supervisor ? [req.params.ticketNumber] : [req.params.ticketNumber, psFilter];
+
     const [rows] = await db.execute(
       `SELECT t.*, f.farmerNumber, f.firstName, f.lastName,
               g.name as gradeName, g.grade_code as gCode, mc.name as marketCenterName, sn.saleNumber
@@ -1210,8 +1247,8 @@ app.get('/api/tickets/check/:ticketNumber', authenticateToken, async (req, res) 
        JOIN grades g ON t.gradeId = g.id
        JOIN market_centers mc ON t.marketCenterId = mc.id
        JOIN sale_numbers sn ON t.saleNumberId = sn.id
-       WHERE t.ticketNumber = ?`,
-      [req.params.ticketNumber]
+       ${whereClause}`,
+      params
     );
     if (rows.length > 0) {
       res.json({ exists: true, ticket: rows[0] });

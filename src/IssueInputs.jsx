@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useStorage } from './hooks/useStorage';
 import { Plus, Trash2, X, ShoppingCart, User, Package } from 'lucide-react';
+import { filterItemsByPS, getScopedPS } from './utils';
 
 function IssueInputs() {
   const { darkMode, currentUser, testMode, activePS } = useAppContext();
@@ -12,10 +13,11 @@ function IssueInputs() {
   const [form, setForm] = useState({ farmerId: '', inputTypeId: '', quantity: '', totalValue: '' });
 
   const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
-  const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
+  const activePSValue = getScopedPS(currentUser, activePS);
 
   // Filter farmers by active PS
-  const filteredFarmers = farmers.filter(f => activePSValue === 'All' || f.ps === activePSValue);
+  const filteredFarmers = filterItemsByPS(farmers, activePSValue);
+  const filteredItems = filterItemsByPS(items, activePSValue);
 
   const handleInputType = (typeId) => {
     const type = inputTypes.find(t => t.id === typeId);
@@ -184,7 +186,7 @@ function IssueInputs() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {items.map(item => (
+            {filteredItems.map(item => (
               <tr key={item.id} className={darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50 transition'}>
                 <td className="px-6 py-4 text-gray-500">
                   {new Date(item.createdAt).toLocaleDateString()}
@@ -219,7 +221,7 @@ function IssueInputs() {
             ))}
           </tbody>
         </table>
-        {items.length === 0 && !loading && <div className="text-center py-12 text-gray-500 italic">No inputs have been issued yet</div>}
+        {filteredItems.length === 0 && !loading && <div className="text-center py-12 text-gray-500 italic">No inputs have been issued yet</div>}
         {loading && <div className="text-center py-12 text-gray-500">Loading issue records...</div>}
       </div>
     </div>

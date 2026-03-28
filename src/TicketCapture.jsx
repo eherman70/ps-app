@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useStorage } from './hooks/useStorage';
 import { Plus, X, AlertTriangle, CheckCircle, Edit3, Trash2 } from 'lucide-react';
 import { TOBACCO_GRADES_MASTER } from './data/tobaccoGrades';
+import { filterItemsByPS, getScopedPS } from './utils';
 
 function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, prefilledSaleNumberId }) {
   const { darkMode, currentUser, activePS, testMode } = useAppContext();
@@ -13,7 +14,7 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
   const { items: saleNumbers } = useStorage('salenumber');
 
   const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
-  const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
+  const activePSValue = getScopedPS(currentUser, activePS);
 
   const [showForm, setShowForm] = useState(false);
   const [selectedMarketCenter, setSelectedMarketCenter] = useState(prefilledMarketCenter || '');
@@ -294,9 +295,38 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
 
   const filteredSaleNumbers = saleNumbers.filter(sn => sn.marketCenterId === selectedMarketCenter);
 
+  const farmerOptions = useMemo(() => {
+    return farmers
+      .filter(f => activePSValue === 'All' || f.ps === activePSValue)
+      .map(f => ({
+        id: f.id,
+        label: `${f.farmerNumber} - ${f.firstName} ${f.lastName}`,
+      }));
+  }, [farmers, activePSValue]);
+
+  const gradeOptions = useMemo(() => {
+    const qualityOrder = ['Choice', 'Fine', 'Good', 'Fair', 'Low', 'Reject'];
+    const qualityGrades = grades
+      .filter(g => g.is_quality_grade === 1)
+      .sort((a, b) => {
+        return qualityOrder.indexOf(a.quality_level || 'Reject') - qualityOrder.indexOf(b.quality_level || 'Reject');
+      });
+
+    const operationalGrades = grades.filter(g => g.is_quality_grade === 0);
+
+    return [...qualityGrades, ...operationalGrades].map(g => ({
+      id: g.id,
+      label: g.is_quality_grade === 1
+        ? `${g.grade_code} - $${g.price} (${g.quality_level || 'N/A'})`
+        : `${g.grade_code} - ${g.name}`,
+    }));
+  }, [grades]);
+
+  const scopedTickets = useMemo(() => filterItemsByPS(items, activePSValue), [items, activePSValue]);
+
   const displayTickets = selectedSaleNumber
-    ? items.filter(t => t.saleNumber === selectedSaleNumber)
-    : items.filter(t => activePSValue === 'All' || t.ps === activePSValue);
+    ? scopedTickets.filter(t => t.saleNumber === selectedSaleNumber)
+    : scopedTickets;
 
   return (
     <div className={`fixed inset-0 z-50 overflow-y-auto ${darkMode ? 'bg-gray-900 text-white' : 'bg-slate-100 text-gray-900'} p-4 sm:p-8 flex flex-col`}>
@@ -499,61 +529,30 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
 
                 <div>
                   <label className="block mb-2 text-sm">Farmer *</label>
-                  <select
+                  <KeyboardAutocomplete
                     id="tc-farmer"
                     value={form.farmerId}
-                    onChange={(e) => setForm({...form, farmerId: e.target.value})}
-                    onKeyDown={(e) => handleKeyDown(e, 'tc-grade')}
+                    options={farmerOptions}
+                    placeholder="Type farmer number or name"
                     disabled={!workflowComplete || (duplicateTicket && !isUpdateMode)}
-                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'} ${(!workflowComplete || (duplicateTicket && !isUpdateMode)) ? 'cursor-not-allowed opacity-60' : ''}`}
-                  >
-                    <option value="">Select Farmer</option>
-                    {farmers
-                      .filter(f => activePSValue === 'All' || f.ps === activePSValue)
-                      .map(f => (
-                        <option key={f.id} value={f.id}>{f.farmerNumber} - {f.firstName} {f.lastName}</option>
-                      ))}
-                  </select>
+                    darkMode={darkMode}
+                    nextFieldId="tc-grade"
+                    onSelect={(selectedId) => setForm({ ...form, farmerId: selectedId })}
+                  />
                 </div>
 
                 <div>
                   <label className="block mb-2 text-sm">Grade *</label>
-                  <select
+                  <KeyboardAutocomplete
                     id="tc-grade"
                     value={form.gradeId}
-                    onChange={(e) => handleGrade(e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, 'tc-mass')}
+                    options={gradeOptions}
+                    placeholder="Type grade code or name"
                     disabled={!workflowComplete || (duplicateTicket && !isUpdateMode)}
-                    className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'} ${(!workflowComplete || (duplicateTicket && !isUpdateMode)) ? 'cursor-not-allowed opacity-60' : ''}`}
-                  >
-                    <option value="">Select Grade</option>
-                    <optgroup label="✅ QUALITY GRADES">
-                      {['LUGS', 'CUTTERS', 'THIN_LEAF', 'LEAF', 'Full Orange Leaf (Premium)', 'Other'].map(cat => {
-                        const catGrades = grades.filter(g => {
-                          if (g.is_quality_grade !== 1) return false;
-                          if (cat === 'Full Orange Leaf (Premium)') return g.group_name === 'LEAF_ORANGE_FULL';
-                          if (cat === 'LEAF') return g.category === 'LEAF' && g.group_name !== 'LEAF_ORANGE_FULL';
-                          return (g.category || 'Other') === cat;
-                        });
-                        if (catGrades.length === 0) return null;
-                        return (
-                          <optgroup key={cat} label={`   ${cat}`}>
-                            {catGrades.sort((a,b) => {
-                              const order = ['Choice', 'Fine', 'Good', 'Fair', 'Low', 'Reject'];
-                              return order.indexOf(a.quality_level || 'Reject') - order.indexOf(b.quality_level || 'Reject');
-                            }).map(g => (
-                              <option key={g.id} value={g.id}>{g.grade_code} - ${g.price} ({g.quality_level})</option>
-                            ))}
-                          </optgroup>
-                        );
-                      })}
-                    </optgroup>
-                    <optgroup label="⚠️ OPERATIONAL GRADES (Non-Production)">
-                      {grades.filter(g => g.is_quality_grade === 0).map(g => (
-                        <option key={g.id} value={g.id}>{g.grade_code} - {g.name}</option>
-                      ))}
-                    </optgroup>
-                  </select>
+                    darkMode={darkMode}
+                    nextFieldId="tc-mass"
+                    onSelect={(selectedId) => handleGrade(selectedId)}
+                  />
                   {form.gradeId && (
                     <div className="flex items-center gap-2 mt-1">
                       {(() => {
@@ -701,6 +700,158 @@ function StepCard({ step, done, disabled, darkMode, label, children }) {
         <label className="font-semibold text-sm">Step {step}: {label}</label>
       </div>
       {children}
+    </div>
+  );
+}
+
+function KeyboardAutocomplete({
+  id,
+  value,
+  options,
+  placeholder,
+  disabled,
+  darkMode,
+  nextFieldId,
+  onSelect,
+}) {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const closeTimeoutRef = useRef(null);
+  const lastSelectedLabelRef = useRef('');
+
+  const selectedOption = useMemo(() => {
+    return options.find(option => option.id === value) || null;
+  }, [options, value]);
+
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return options;
+    return options.filter(option => option.label.toLowerCase().includes(normalizedQuery));
+  }, [options, query]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setActiveIndex(0);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!query && selectedOption) {
+      setQuery(selectedOption.label);
+    }
+    if (!selectedOption && value === '' && query === lastSelectedLabelRef.current) {
+      setQuery('');
+      lastSelectedLabelRef.current = '';
+    }
+  }, [selectedOption, value, query]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const focusNextField = () => {
+    if (!nextFieldId) return;
+    const nextEl = document.getElementById(nextFieldId);
+    if (nextEl) nextEl.focus();
+  };
+
+  const applySelection = (option, moveNext = true) => {
+    onSelect(option?.id || '');
+    setQuery(option?.label || '');
+    lastSelectedLabelRef.current = option?.label || '';
+    setIsOpen(false);
+    setActiveIndex(0);
+    if (moveNext) {
+      focusNextField();
+    }
+  };
+
+  const handleKeyDown = (event) => {
+    if (disabled) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (!isOpen) setIsOpen(true);
+      setActiveIndex(prev => Math.min(prev + 1, Math.max(filteredOptions.length - 1, 0)));
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!isOpen) setIsOpen(true);
+      setActiveIndex(prev => Math.max(prev - 1, 0));
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+
+      if (filteredOptions.length === 1) {
+        applySelection(filteredOptions[0], true);
+        return;
+      }
+
+      if (filteredOptions.length > 1 && filteredOptions[activeIndex]) {
+        applySelection(filteredOptions[activeIndex], true);
+        return;
+      }
+
+      focusNextField();
+    }
+  };
+
+  return (
+    <div className="relative">
+      <input
+        id={id}
+        type="text"
+        value={query}
+        onFocus={() => setIsOpen(true)}
+        onBlur={() => {
+          closeTimeoutRef.current = setTimeout(() => setIsOpen(false), 120);
+        }}
+        onChange={(event) => {
+          const newQuery = event.target.value;
+          setQuery(newQuery);
+          setIsOpen(true);
+          setActiveIndex(0);
+          if (value) {
+            onSelect('');
+          }
+        }}
+        onKeyDown={handleKeyDown}
+        disabled={disabled}
+        placeholder={placeholder}
+        className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+        autoComplete="off"
+      />
+
+      {isOpen && !disabled && (
+        <div className={`absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-lg border shadow-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
+          {filteredOptions.length === 0 ? (
+            <div className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+              No matches
+            </div>
+          ) : (
+            filteredOptions.map((option, index) => (
+              <button
+                key={option.id}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => applySelection(option, true)}
+                className={`w-full text-left px-3 py-2 text-sm transition ${index === activeIndex ? (darkMode ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-900') : (darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50')}`}
+              >
+                {option.label}
+              </button>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

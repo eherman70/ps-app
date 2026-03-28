@@ -111,4 +111,28 @@ body {
     display: block !important;
     visibility: visible !important;
   }
+
+  body.printing-farmer-payment-only * {
+    visibility: hidden !important;
+  }
+
+  body.printing-farmer-payment-only .farmer-payment-print-only,
+  body.printing-farmer-payment-only .farmer-payment-print-only * {
+    visibility: visible !important;
+  }
+
+  body.printing-farmer-payment-only .farmer-payment-print-only {
+    display: block !important;
+  }
+
+  body.printing-farmer-payment-only .farmer-payment-print-only {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+    color: #000 !important;
+  }
 }

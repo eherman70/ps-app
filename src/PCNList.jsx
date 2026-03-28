@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useStorage } from './hooks/useStorage';
 import { Plus, Trash2, X, Eye } from 'lucide-react';
+import { filterItemsByPS, getScopedPS } from './utils';
 
 function PCNList() {
   const { darkMode, currentUser, activePS } = useAppContext();
@@ -9,7 +10,9 @@ function PCNList() {
   const { items: tickets, refreshItems: refreshTickets } = useStorage('ticket');
 
   const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
-  const activePSValue = isSupervisor ? (activePS || 'All') : currentUser.ps;
+  const activePSValue = getScopedPS(currentUser, activePS);
+  const scopedTickets = filterItemsByPS(tickets, activePSValue);
+  const scopedPcns = filterItemsByPS(pcns, activePSValue);
 
   const [showForm, setShowForm] = useState(false);
   const [selectedTickets, setSelectedTickets] = useState([]);
@@ -19,7 +22,7 @@ function PCNList() {
   const [detailPcn, setDetailPcn] = useState(null);
 
   const loadAvailableTickets = () => {
-    return tickets.filter(t => !t.pcnNumber && (activePSValue === 'All' || t.ps === activePSValue));
+    return scopedTickets.filter(t => !t.pcnNumber);
   };
 
   const handleTicketSelect = (ticket) => {
@@ -150,7 +153,7 @@ function PCNList() {
     if (!confirm('Delete this PCN? Tickets will be released.')) return;
     try {
       // Release tickets that belong to this PCN
-      const pcnTickets = tickets.filter(t => t.pcnNumber === pcn.pcnNumber);
+      const pcnTickets = scopedTickets.filter(t => t.pcnNumber === pcn.pcnNumber);
       for (const ticket of pcnTickets) {
         await window.api.request(`/tickets/${ticket.id}`, {
           method: 'PUT',
@@ -179,8 +182,7 @@ function PCNList() {
     }
   };
 
-  const filteredPCNs = pcns
-    .filter(pcn => activePSValue === 'All' || pcn.ps === activePSValue)
+  const filteredPCNs = scopedPcns
     .filter(pcn => {
       if (filter.status !== 'All' && pcn.status !== filter.status) return false;
       if (filter.saleNumber && !pcn.saleNumber?.toLowerCase().includes(filter.saleNumber.toLowerCase())) return false;
