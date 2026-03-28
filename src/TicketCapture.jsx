@@ -569,13 +569,13 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
                                {selectedGrade?.name}
                             </p>
                             {isPremium && (
-                              <span className="text-[8px] px-1 bg-amber-100 text-amber-700 rounded border border-amber-200 font-bold uppercase tracking-tighter">Premium Grade</span>
+                              <span className="text-[8px] px-1 bg-amber-600 text-white border-none shadow-sm rounded font-bold uppercase tracking-tighter">Premium Grade</span>
                             )}
                             {isReject && (
-                              <span className="text-[8px] px-1 bg-rose-100 text-rose-700 rounded border border-rose-200 font-bold uppercase tracking-tighter">Reject</span>
+                              <span className="text-[8px] px-1 bg-rose-600 text-white border-none shadow-sm rounded font-bold uppercase tracking-tighter">Reject</span>
                             )}
                             {isOperational && (
-                              <span className="text-[8px] px-1 bg-orange-100 text-orange-700 rounded border border-orange-200 font-bold uppercase tracking-tighter">Operational</span>
+                              <span className="text-[8px] px-1 bg-orange-600 text-white border-none shadow-sm rounded font-bold uppercase tracking-tighter">Operational</span>
                             )}
                           </>
                         );

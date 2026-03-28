@@ -96,7 +96,7 @@ function TicketList() {
                   <td className="px-6 py-4 font-bold">{parseFloat(ticket.netWeight || ticket.mass || 0).toFixed(1)}</td>
                   <td className="px-6 py-4 font-bold text-indigo-600">${parseFloat(ticket.totalValue || ticket.value || 0).toFixed(2)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-bold rounded-lg uppercase">
+                    <span className="px-2 py-1 bg-blue-600 shadow-sm text-white text-[10px] font-bold rounded-lg uppercase">
                       Sale #{ticket.saleNumber}
                     </span>
                   </td>

@@ -5,12 +5,13 @@ import { useStorage } from '../hooks/useStorage';
 import { filterItemsByPS, getScopedPS } from '../utils';
 
 function Dashboard() {
-  const { darkMode, setActiveModule, currentUser, activePS } = useAppContext();
+  const { darkMode, setActiveModule, setActiveTabOverride, currentUser, activePS } = useAppContext();
   const { items: farmers } = useStorage('farmer');
   const { items: seasons } = useStorage('season');
   const { items: grades } = useStorage('grade');
   const { items: issuedInputs } = useStorage('issuedinput');
   const { items: tickets } = useStorage('ticket');
+  const { items: users } = useStorage('user');
 
   const scopedPS = getScopedPS(currentUser, activePS);
 
@@ -26,12 +27,57 @@ function Dashboard() {
     tickets: scopedTickets.length,
   }), [scopedFarmers.length, seasons.length, grades.length, scopedInputs.length, scopedTickets.length]);
 
+  const last7DaysTickets = useMemo(() => {
+    const counts = [0, 0, 0, 0, 0, 0, 0];
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    scopedTickets.forEach(t => {
+      const d = new Date(t.captureDate || t.createdAt || t.saleDate);
+      const diffTime = today - d;
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays >= 0 && diffDays < 7) {
+        counts[6 - diffDays]++;
+      }
+    });
+    const maxCount = Math.max(...counts, 1);
+    return counts.map(c => Math.round((c / maxCount) * 100));
+  }, [scopedTickets]);
+
+  const recentGrowthText = useMemo(() => {
+    if (scopedFarmers.length === 0) return "No registrations yet.";
+    return `System has ${scopedFarmers.length} registered farmers across ${seasons.length} seasons.`;
+  }, [scopedFarmers.length, seasons.length]);
+
+  const farmersWithInputs = useMemo(() => new Set(scopedInputs.map(i => i.farmerId)).size, [scopedInputs]);
+  const activeFarmers = useMemo(() => new Set([...scopedInputs.map(i=>i.farmerId), ...scopedTickets.map(t=>t.farmerId)]).size, [scopedInputs, scopedTickets]);
+  const inputsPct = scopedFarmers.length > 0 ? Math.round((farmersWithInputs / scopedFarmers.length) * 100) : 0;
+  const activePct = scopedFarmers.length > 0 ? Math.round((activeFarmers / scopedFarmers.length) * 100) : 0;
+
+  const scopedUsers = useMemo(() => filterItemsByPS(users, scopedPS), [users, scopedPS]);
+  const activeUsersCount = scopedUsers.filter(u => u.status === 'Active' || !u.status).length;
+  const clerkCount = scopedUsers.filter(u => u.role === 'Capture Clerk').length;
+  const supervisorCount = scopedUsers.filter(u => u.role === 'Supervisor' || u.role === 'Admin').length;
+  
+  const totalSegmentedUsers = Math.max(clerkCount + supervisorCount, 1);
+  const clerkPct = Math.round((clerkCount / totalSegmentedUsers) * 100);
+  const supervisorPct = Math.round((supervisorCount / totalSegmentedUsers) * 100);
+  const circleCircumference = 2 * Math.PI * 40;
+  const clerkDash = (clerkPct / 100) * circleCircumference;
+  const supervisorDash = (supervisorPct / 100) * circleCircumference;
+
   const categories = [
-    { label: 'Farmers', value: stats.farmers, icon: Users, color: 'bg-indigo-500' },
-    { label: 'Seasons', value: stats.seasons, icon: Calendar, color: 'bg-teal-500' },
-    { label: 'Grades', value: stats.grades, icon: FileText, color: 'bg-rose-500' },
-    { label: 'Tickets', value: stats.tickets, icon: FileText, color: 'bg-blue-500' },
+    { label: 'Farmers', value: stats.farmers, icon: Users, color: 'bg-indigo-500', targetModule: 'registration', targetTab: 'farmers' },
+    { label: 'Seasons', value: stats.seasons, icon: Calendar, color: 'bg-teal-500', targetModule: 'registration', targetTab: 'seasons' },
+    { label: 'Grades', value: stats.grades, icon: FileText, color: 'bg-rose-500', targetModule: 'registration', targetTab: 'grades' },
+    { label: 'Tickets', value: stats.tickets, icon: FileText, color: 'bg-blue-500', targetModule: 'tobacco-sales', targetTab: null },
   ];
+
+  const handleNavigate = (targetModule, targetTab) => {
+    if (targetTab) {
+      setActiveTabOverride(targetTab);
+    }
+    setActiveModule(targetModule);
+  };
 
   const quickLinks = [
     { label: 'Registration', count: stats.farmers, icon: LayoutDashboard, moduleId: 'registration' },
@@ -49,7 +95,11 @@ function Dashboard() {
         {categories.map((card, i) => {
           const Icon = card.icon;
           return (
-            <div key={i} className={`${card.color} rounded-3xl p-5 text-white shadow-md relative overflow-hidden transition-transform hover:-translate-y-1 hover:shadow-lg`}>
+            <div 
+              key={i} 
+              onClick={() => handleNavigate(card.targetModule, card.targetTab)}
+              className={`${card.color} rounded-3xl p-5 text-white shadow-md relative overflow-hidden transition-transform hover:-translate-y-1 hover:shadow-lg cursor-pointer`}
+            >
               <div className="flex justify-between items-start mb-6">
                 <div className="p-2 bg-white/20 rounded-xl">
                   <Icon className="w-6 h-6" />
@@ -97,18 +147,17 @@ function Dashboard() {
         {/* Sales Analytics */}
         <div className={`p-6 rounded-3xl shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-100'}`}>
           <div className="flex items-center justify-between mb-6">
-            <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>Sales Volume</h3>
-            <span className="text-xs font-semibold text-emerald-500 bg-emerald-50 px-2 py-1 rounded-full">+12%</span>
+            <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>Sales Volume (7 Days)</h3>
+            <span className="text-xs font-semibold text-emerald-500 bg-emerald-50 px-2 py-1 rounded-full">{scopedTickets.length > 0 ? 'Active' : 'No Data'}</span>
           </div>
           <div className="flex items-end space-x-2 h-32 mb-4">
-            {/* CSS Bar Chart Mockup */}
-            {[40, 70, 45, 90, 60, 100, 85].map((height, idx) => (
-              <div key={idx} className="w-full flex flex-col justify-end h-full group">
+            {last7DaysTickets.map((height, idx) => (
+              <div key={idx} className="w-full flex flex-col justify-end h-full group" title={`Day ${7 - idx} ago: ${height}% capacity`}>
                 <div 
-                  className="w-full bg-blue-100 dark:bg-gray-700 rounded-t-md transition-all group-hover:bg-blue-300 relative" 
-                  style={{ height: `${height}%` }}
+                  className={`w-full bg-blue-100 dark:bg-gray-700 rounded-t-md transition-all relative ${height > 0 ? 'group-hover:bg-blue-300' : ''}`} 
+                  style={{ height: `${Math.max(height, 5)}%` }}
                 >
-                  <div className={`absolute bottom-0 w-full bg-blue-500 rounded-t-md transition-all ${idx === 5 ? 'bg-indigo-500 h-full' : 'h-3/4'}`}></div>
+                  <div className={`absolute bottom-0 w-full bg-blue-500 rounded-t-md transition-all ${idx === 6 ? 'bg-indigo-500 h-full' : 'h-full'}`}></div>
                 </div>
               </div>
             ))}
@@ -125,7 +174,7 @@ function Dashboard() {
         {/* Farmers Analytics */}
         <div className={`p-6 rounded-3xl shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-100'}`}>
           <div className="flex items-center justify-between mb-6">
-            <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>Farmer Growth</h3>
+            <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>Farmer Growth & Activity</h3>
             <Users className={`w-5 h-5 ${darkMode ? 'text-indigo-400' : 'text-indigo-500'}`} />
           </div>
           
@@ -136,31 +185,31 @@ function Dashboard() {
                 <span className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{stats.farmers}</span>
               </div>
               <div className="w-full bg-slate-100 dark:bg-gray-700 rounded-full h-2">
-                <div className="bg-indigo-500 h-2 rounded-full" style={{ width: '85%' }}></div>
+                <div className="bg-indigo-500 h-2 rounded-full" style={{ width: '100%' }}></div>
               </div>
             </div>
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Inputs Received</span>
-                <span className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{stats.inputs}</span>
+                <span className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{farmersWithInputs}</span>
               </div>
               <div className="w-full bg-slate-100 dark:bg-gray-700 rounded-full h-2">
-                <div className="bg-teal-500 h-2 rounded-full" style={{ width: '60%' }}></div>
+                <div className="bg-teal-500 h-2 rounded-full" style={{ width: `${inputsPct}%` }}></div>
               </div>
             </div>
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Active in System</span>
-                <span className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{Math.floor(stats.farmers * 0.9)}</span>
+                <span className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{activeFarmers}</span>
               </div>
               <div className="w-full bg-slate-100 dark:bg-gray-700 rounded-full h-2">
-                <div className="bg-rose-500 h-2 rounded-full" style={{ width: '90%' }}></div>
+                <div className="bg-rose-500 h-2 rounded-full" style={{ width: `${activePct}%` }}></div>
               </div>
             </div>
           </div>
           
           <div className={`p-4 rounded-2xl ${darkMode ? 'bg-indigo-900/20' : 'bg-indigo-50'}`}>
-            <p className={`text-xs ${darkMode ? 'text-indigo-300' : 'text-indigo-800'}`}>New registrations are up <strong>15%</strong> compared to last season.</p>
+            <p className={`text-xs ${darkMode ? 'text-indigo-300' : 'text-indigo-800'}`}>{recentGrowthText}</p>
           </div>
         </div>
 
@@ -168,18 +217,19 @@ function Dashboard() {
         <div className={`p-6 rounded-3xl shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-100'}`}>
           <div className="flex items-center justify-between mb-4">
             <h3 className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>System Usage</h3>
-            <span className="text-xs font-semibold text-white bg-slate-800 px-2 py-1 rounded-full">Weekly</span>
+            <span className="text-xs font-semibold text-white bg-slate-800 px-2 py-1 rounded-full">All Time</span>
           </div>
 
           <div className="flex justify-center items-center py-6 relative">
-            {/* Donut Chart Mockup */}
-            <div className="w-32 h-32 rounded-full border-[12px] border-slate-100 dark:border-gray-700 relative flex items-center justify-center">
-              {/* Fake donut segments using bordered circles */}
-              <div className="absolute inset-0 rounded-full border-[12px] border-blue-500" style={{ clipPath: 'polygon(50% 50%, 50% 0, 100% 0, 100% 100%, 0 100%, 0 50%)' }}></div>
-              <div className="absolute inset-0 rounded-full border-[12px] border-teal-500" style={{ clipPath: 'polygon(50% 50%, 0 50%, 0 0, 50% 0)' }}></div>
+            <div className="w-32 h-32 relative flex items-center justify-center">
+              <svg width="128" height="128" viewBox="0 0 100 100" className="transform -rotate-90 absolute text-slate-100 dark:text-gray-700">
+                <circle cx="50" cy="50" r="40" fill="transparent" stroke="currentColor" strokeWidth="12" />
+                {clerkDash > 0 && <circle cx="50" cy="50" r="40" fill="transparent" stroke="#3b82f6" strokeWidth="12" strokeDasharray={`${clerkDash} ${circleCircumference}`} strokeDashoffset="0" className="transition-all duration-1000 ease-in-out" />}
+                {supervisorDash > 0 && <circle cx="50" cy="50" r="40" fill="transparent" stroke="#14b8a6" strokeWidth="12" strokeDasharray={`${supervisorDash} ${circleCircumference}`} strokeDashoffset={`-${clerkDash}`} className="transition-all duration-1000 ease-in-out" />}
+              </svg>
               
-              <div className="text-center">
-                <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>34</p>
+              <div className="text-center z-10">
+                <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{activeUsersCount || 0}</p>
                 <p className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Active Users</p>
               </div>
             </div>
@@ -188,11 +238,11 @@ function Dashboard() {
           <div className="flex justify-between items-center text-xs mt-2">
             <div className="flex items-center space-x-2">
               <span className="w-3 h-3 rounded-full bg-blue-500"></span>
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>clerks</span>
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>clerks ({clerkCount})</span>
             </div>
             <div className="flex items-center space-x-2">
               <span className="w-3 h-3 rounded-full bg-teal-500"></span>
-              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>supervisors</span>
+              <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>supervisors ({supervisorCount})</span>
             </div>
           </div>
         </div>

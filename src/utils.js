@@ -81,9 +81,9 @@ export function downloadCSV(filename, content) {
 
 export function getScopedPS(currentUser, activePS) {
   const role = String(currentUser?.role || '').toLowerCase();
-  const isSupervisor = role === 'admin' || role === 'supervisor';
+  const isAdmin = role === 'admin';
 
-  if (isSupervisor) {
+  if (isAdmin) {
     return activePS || 'All';
   }
 

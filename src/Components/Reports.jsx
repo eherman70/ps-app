@@ -214,32 +214,32 @@ function Reports() {
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-200 dark:border-amber-800 rounded-2xl shadow-sm">
-            <p className="text-[10px] font-black text-amber-800 dark:text-amber-400 uppercase tracking-widest mb-1">Premium L-OF</p>
-            <p className="text-2xl font-black text-amber-600">{pStat.count} Bales / {pStat.weight.toFixed(1)}kg</p>
+          <div className="p-4 bg-amber-600 border border-amber-500 rounded-2xl shadow-sm">
+            <p className="text-[10px] font-black text-amber-100 uppercase tracking-widest mb-1">Premium L-OF</p>
+            <p className="text-2xl font-black text-white">{pStat.count} Bales / {pStat.weight.toFixed(1)}kg</p>
           </div>
-          <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl shadow-sm">
-            <p className="text-[10px] font-bold text-gray-800 dark:text-gray-400 uppercase tracking-widest mb-1">Standard L-O</p>
-            <p className="text-2xl font-black text-gray-600">{sStat.count} Bales / {sStat.weight.toFixed(1)}kg</p>
+          <div className="p-4 bg-gray-600 border border-gray-500 rounded-2xl shadow-sm">
+            <p className="text-[10px] font-bold text-gray-200 uppercase tracking-widest mb-1">Standard L-O</p>
+            <p className="text-2xl font-black text-white">{sStat.count} Bales / {sStat.weight.toFixed(1)}kg</p>
           </div>
-          <div className="p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-800 rounded-2xl shadow-sm">
-            <p className="text-[10px] font-bold text-rose-800 dark:text-rose-400 uppercase tracking-widest mb-1">Reject (REJ)</p>
-            <p className="text-2xl font-black text-rose-600">{rStat.count} Bales ({rRate}%)</p>
+          <div className="p-4 bg-rose-600 border border-rose-500 rounded-2xl shadow-sm">
+            <p className="text-[10px] font-bold text-rose-100 uppercase tracking-widest mb-1">Reject (REJ)</p>
+            <p className="text-2xl font-black text-white">{rStat.count} Bales ({rRate}%)</p>
           </div>
-          <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 rounded-2xl shadow-sm">
-            <p className="text-[10px] font-bold text-green-800 dark:text-green-400 uppercase tracking-widest mb-1">Production Ratio</p>
-            <p className="text-2xl font-black text-green-600">{pRatio}% Premium</p>
+          <div className="p-4 bg-green-600 border border-green-500 rounded-2xl shadow-sm">
+            <p className="text-[10px] font-bold text-green-100 uppercase tracking-widest mb-1">Production Ratio</p>
+            <p className="text-2xl font-black text-white">{pRatio}% Premium</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-3 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 rounded-xl flex justify-between items-center">
-            <span className="text-sm font-bold text-orange-700 dark:text-orange-400">Total Cancelled (CAN)</span>
-            <span className="text-xl font-black text-orange-600">{canTicks.length} Bales</span>
+          <div className="p-3 bg-orange-600 border border-orange-500 rounded-xl flex justify-between items-center">
+            <span className="text-sm font-bold text-orange-100">Total Cancelled (CAN)</span>
+            <span className="text-xl font-black text-white">{canTicks.length} Bales</span>
           </div>
-          <div className="p-3 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 rounded-xl flex justify-between items-center">
-            <span className="text-sm font-bold text-orange-700 dark:text-orange-400">Total Withdrawn (WIT)</span>
-            <span className="text-xl font-black text-orange-600">{witTicks.length} Bales</span>
+          <div className="p-3 bg-orange-600 border border-orange-500 rounded-xl flex justify-between items-center">
+            <span className="text-sm font-bold text-orange-100">Total Withdrawn (WIT)</span>
+            <span className="text-xl font-black text-white">{witTicks.length} Bales</span>
           </div>
         </div>
       </div>

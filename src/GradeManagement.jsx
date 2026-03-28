@@ -333,7 +333,7 @@ function GradeManagement() {
                    <div className="text-[10px] text-gray-500 uppercase tracking-tight">{item.group_name}</div>
                 </td>
                 <td className="px-6 py-4">
-                   <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-bold rounded">
+                   <span className="px-2 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded shadow-sm">
                       {item.category}
                    </span>
                 </td>
@@ -345,8 +345,8 @@ function GradeManagement() {
                     <span className="text-sm font-medium">{item.grade_class}</span>
                     <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase text-center w-fit ${
                       item.is_quality_grade === 1 
-                        ? (darkMode ? 'bg-green-900/40 text-green-400 border border-green-800' : 'bg-green-100 text-green-700 border border-green-200')
-                        : (darkMode ? 'bg-orange-900/40 text-orange-400 border border-orange-800' : 'bg-orange-100 text-orange-700 border border-orange-200')
+                        ? 'bg-green-600 text-white border-green-700 shadow-sm'
+                        : 'bg-orange-600 text-white border-orange-700 shadow-sm'
                     }`}>
                       {item.is_quality_grade === 1 ? 'QUALITY' : 'OPERATIONAL'}
                     </span>
@@ -357,7 +357,7 @@ function GradeManagement() {
                 </td>
                 <td className="px-6 py-4 text-center">
                   <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                    item.status === 'Active' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-400'
+                    item.status === 'Active' ? 'bg-green-600 text-white shadow-sm' : 'bg-gray-600 text-white shadow-sm'
                   }`}>
                     {item.status}
                   </span>

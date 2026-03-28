@@ -10,10 +10,14 @@ function UserManagement() {
   const { items: societies } = useStorage('ps');
   
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ username: '', password: '', fullName: '', role: 'Clerk', ps: '' });
+  const isAdmin = currentUser.role === 'Admin';
+  // Default new users PS to currently assigned PS for supervisors. Admin defaults to empty/none.
+  const [form, setForm] = useState({ username: '', password: '', fullName: '', role: 'Clerk', ps: isAdmin ? '' : currentUser.ps });
   const [editing, setEditing] = useState(null);
 
   const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
+
+  const displayUsers = isAdmin ? users : users.filter(user => user.ps === currentUser.ps);
 
   const handleSubmit = async () => {
     if (!form.username || (!editing && !form.password) || !form.fullName || !form.ps) {
@@ -44,7 +48,7 @@ function UserManagement() {
   };
 
   const resetForm = () => {
-    setForm({ username: '', password: '', fullName: '', role: 'Clerk', ps: '' });
+    setForm({ username: '', password: '', fullName: '', role: 'Clerk', ps: isAdmin ? '' : currentUser.ps });
     setEditing(null);
     setShowForm(false);
   };
@@ -170,10 +174,11 @@ function UserManagement() {
               <select
                 value={form.ps}
                 onChange={(e) => setForm({...form, ps: e.target.value})}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                disabled={!isAdmin}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'} ${!isAdmin ? 'bg-gray-100 cursor-not-allowed opacity-70' : ''}`}
               >
                 <option value="">-- Select Society --</option>
-                <option value="All">All Societies (Full Access)</option>
+                {isAdmin && <option value="All">All Societies (Full Access)</option>}
                 {societies?.map(s => <option key={s.id} value={s.code}>{s.name} ({s.code})</option>)}
               </select>
             </div>
@@ -202,7 +207,7 @@ function UserManagement() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {users.map(user => (
+            {displayUsers.map(user => (
               <tr key={user.id} className={darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}>
                 <td className="px-6 py-4 font-medium flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center font-bold">
@@ -213,9 +218,9 @@ function UserManagement() {
                 <td className="px-6 py-4">{user.fullName}</td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                    user.role === 'Admin' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400' :
-                    user.role === 'Supervisor' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' :
-                    'bg-gray-100 text-gray-800 dark:bg-gray-900/40 dark:text-gray-400'
+                    user.role === 'Admin' ? 'bg-purple-600 text-white' :
+                    user.role === 'Supervisor' ? 'bg-blue-600 text-white' :
+                    'bg-gray-600 text-white'
                   }`}>
                     {user.role}
                   </span>
@@ -240,7 +245,7 @@ function UserManagement() {
             ))}
           </tbody>
         </table>
-        {users.length === 0 && !loading && <div className="text-center py-12 text-gray-500">No user accounts found</div>}
+        {displayUsers.length === 0 && !loading && <div className="text-center py-12 text-gray-500">No user accounts found</div>}
         {loading && <div className="text-center py-12 text-gray-500">Loading user data...</div>}
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import SeasonManagement from '../SeasonManagement';
 import GradeManagement from '../GradeManagement';
@@ -8,12 +8,21 @@ import FarmerManagement from '../FarmerManagement';
 import PrimarySocietyManagement from '../PrimarySocietyManagement';
 
 function RegistrationModule() {
-  const { currentUser, darkMode } = useAppContext();
+  const { currentUser, darkMode, activeTabOverride, setActiveTabOverride } = useAppContext();
   const isAdminOrSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
-  const [activeTab, setActiveTab] = useState(isAdminOrSupervisor ? 'seasons' : 'farmers');
+  const isAdmin = currentUser.role === 'Admin';
+  // Supervisors don't have access to societies, so their default should be seasons if supervisor, otherwise farmers
+  const [activeTab, setActiveTab] = useState(activeTabOverride || (isAdmin ? 'societies' : (isAdminOrSupervisor ? 'seasons' : 'farmers')));
+
+  useEffect(() => {
+    if (activeTabOverride) {
+      setActiveTab(activeTabOverride);
+      setActiveTabOverride(null); // clear it after consuming
+    }
+  }, [activeTabOverride, setActiveTabOverride]);
 
   const tabs = [
-    { id: 'societies', label: 'Societies', sup: true },
+    { id: 'societies', label: 'Societies', requireAdmin: true },
     { id: 'seasons', label: 'Seasons', sup: true },
     { id: 'grades', label: 'Grades', sup: true },
     { id: 'markets', label: 'Market Centers', sup: true },
@@ -27,7 +36,11 @@ function RegistrationModule() {
 
       <div className="mb-6 overflow-x-auto">
         <div className={`flex space-x-2 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          {tabs.filter(t => !t.sup || isAdminOrSupervisor).map(tab => (
+          {tabs.filter(t => {
+            if (t.requireAdmin && !isAdmin) return false;
+            if (t.sup && !isAdminOrSupervisor) return false;
+            return true;
+          }).map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}

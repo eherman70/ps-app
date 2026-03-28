@@ -7,6 +7,7 @@ export function AppProvider({ children }) {
   const [activePS, setActivePS] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
   const [activeModule, setActiveModule] = useState('dashboard');
+  const [activeTabOverride, setActiveTabOverride] = useState(null);
   const [testMode, setTestModeState] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -118,6 +119,7 @@ export function AppProvider({ children }) {
       activePS, setActivePS,
       darkMode, toggleDarkMode,
       activeModule, setActiveModule,
+      activeTabOverride, setActiveTabOverride,
       testMode, setTestMode,
       isLoading, login, register, logout
     }}>

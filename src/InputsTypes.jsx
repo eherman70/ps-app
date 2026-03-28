@@ -162,7 +162,7 @@ function InputTypes() {
                 </td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                    item.category === 'Cash Advance' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
+                    item.category === 'Cash Advance' ? 'bg-amber-600 text-white shadow-sm' : 'bg-blue-600 text-white shadow-sm'
                   }`}>
                     {item.category}
                   </span>

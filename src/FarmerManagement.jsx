@@ -448,7 +448,7 @@ function FarmerManagement() {
                 <td className="px-4 py-3">{item.hectares}</td>
                 <td className="px-4 py-3">{item.seasonName || seasons.find(s => s.id === item.seasonId)?.name || item.season || '-'}</td>
                 <td className="px-4 py-3">
-                  <span className={`px-2 py-1 text-xs rounded-full font-medium ${item.status === 'Inactive' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'}`}>
+                  <span className={`px-2 py-1 text-xs rounded-full font-medium ${item.status === 'Inactive' ? 'bg-red-600 text-white shadow-sm' : 'bg-green-600 text-white shadow-sm'}`}>
                     {item.status || 'Active'}
                   </span>
                 </td>

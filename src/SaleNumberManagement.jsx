@@ -147,7 +147,7 @@ function SaleNumberManagement() {
                 <td className="px-4 py-3 text-center font-bold tracking-wider">{item.saleNumber}</td>
                 <td className="px-4 py-3">{item.seasonName}</td>
                 <td className="px-4 py-3 text-center">
-                  <span className={`px-2 py-1 rounded text-xs ${item.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                  <span className={`px-2 py-1 rounded text-xs text-white shadow-sm ${item.status === 'Active' ? 'bg-green-600' : 'bg-gray-600'}`}>
                     {item.status}
                   </span>
                 </td>

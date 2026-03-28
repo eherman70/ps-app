@@ -805,7 +805,7 @@ function PaymentModule() {
                   <div className="flex items-center gap-2">
                     <span>{`${row.farmer.firstName || ''} ${row.farmer.lastName || ''}`.trim()}</span>
                     {paidFarmerIds.has(row.farmer.id) && (
-                      <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                      <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-600 text-white shadow-sm">
                         PAID
                       </span>
                     )}

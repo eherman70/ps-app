@@ -143,8 +143,8 @@ function MarketCenterManagement() {
                    {item.location || '-'}
                 </td>
                 <td className="px-6 py-4 text-center">
-                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                    item.status === 'Active' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-400'
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-white shadow-sm ${
+                    item.status === 'Active' ? 'bg-green-600' : 'bg-gray-600'
                   }`}>
                     {item.status}
                   </span>
