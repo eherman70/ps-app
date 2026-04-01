@@ -22,9 +22,14 @@ function IssueInputs() {
   const handleInputType = (typeId) => {
     const type = inputTypes.find(t => t.id === typeId);
     if (type) {
-      const qty = parseFloat(form.quantity) || 0;
-      const total = type.unit === 'Fixed' ? parseFloat(type.unitPrice) : qty * parseFloat(type.unitPrice);
-      setForm({...form, inputTypeId: typeId, totalValue: total.toFixed(2)});
+      if (type.category === 'Cash Advance') {
+        const val = parseFloat(form.totalValue) || 0;
+        setForm({...form, inputTypeId: typeId, quantity: '', totalValue: val ? val.toString() : ''});
+      } else {
+        const qty = parseFloat(form.quantity) || 0;
+        const total = type.unit === 'Fixed' ? parseFloat(type.unitPrice) : qty * parseFloat(type.unitPrice);
+        setForm({...form, inputTypeId: typeId, totalValue: total.toFixed(2)});
+      }
     }
   };
 
@@ -36,6 +41,13 @@ function IssueInputs() {
       setForm({...form, quantity: val, totalValue: total.toFixed(2)});
     }
   };
+
+  const handleAmountTzs = (val) => {
+    setForm({...form, quantity: '', totalValue: val});
+  };
+
+  const selectedType = inputTypes.find(t => t.id === form.inputTypeId);
+  const isCashAdvance = selectedType?.category === 'Cash Advance';
 
   const handleSubmit = async () => {
     if (!form.farmerId || !form.inputTypeId) {
@@ -61,6 +73,7 @@ function IssueInputs() {
       await saveItem(null, {
         ...form,
         quantity,
+        isCashAdvance,
         farmerName: `${farmer.firstName} ${farmer.lastName}`,
         farmerNumber: farmer.farmerNumber,
         inputName: inputType.name,
@@ -142,24 +155,40 @@ function IssueInputs() {
               </select>
             </div>
 
-            <div>
-              <label className="block mb-2 text-sm font-medium">Quantity</label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.quantity}
-                onChange={(e) => handleQty(e.target.value)}
-                placeholder="0.00"
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
-              />
-            </div>
-
-            <div>
-              <label className="block mb-2 text-sm font-medium">Total Value (USD)</label>
-              <div className={`w-full px-4 py-2 border rounded-lg font-bold ${darkMode ? 'bg-gray-900 border-gray-700 text-green-400' : 'bg-slate-50 border-gray-200 text-green-700'}`}>
-                ${form.totalValue || '0.00'}
+            {isCashAdvance ? (
+              <div className="md:col-span-2">
+                <label className="block mb-2 text-sm font-medium">Amount (TZS) *</label>
+                <input
+                  type="number"
+                  step="1"
+                  value={form.totalValue}
+                  onChange={(e) => handleAmountTzs(e.target.value)}
+                  placeholder="0"
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                />
               </div>
-            </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block mb-2 text-sm font-medium">Quantity</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={form.quantity}
+                    onChange={(e) => handleQty(e.target.value)}
+                    placeholder="0.00"
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                  />
+                </div>
+
+                <div>
+                  <label className="block mb-2 text-sm font-medium">Total Value (USD)</label>
+                  <div className={`w-full px-4 py-2 border rounded-lg font-bold ${darkMode ? 'bg-gray-900 border-gray-700 text-green-400' : 'bg-slate-50 border-gray-200 text-green-700'}`}>
+                    ${form.totalValue || '0.00'}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex space-x-4 mt-8">
@@ -181,7 +210,7 @@ function IssueInputs() {
               <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Farmer</th>
               <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider">Item</th>
               <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider text-center">Qty</th>
-              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider text-right">Total (USD)</th>
+              <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider text-right">Total Value</th>
               <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider text-right">Actions</th>
             </tr>
           </thead>
@@ -207,10 +236,12 @@ function IssueInputs() {
                   </div>
                 </td>
                 <td className="px-6 py-4 text-center font-medium">
-                  {item.quantity || '-'}
+                  {item.isCashAdvance || item.inputName?.toLowerCase().includes('advance') || (inputTypes.find(t => t.id === item.inputTypeId)?.category === 'Cash Advance') ? '-' : (item.quantity || '-')}
                 </td>
                 <td className="px-6 py-4 text-right font-bold text-red-600 dark:text-red-400">
-                   -${parseFloat(item.totalCost ?? item.totalValue ?? 0).toFixed(2)}
+                   {item.isCashAdvance || item.inputName?.toLowerCase().includes('advance') || (inputTypes.find(t => t.id === item.inputTypeId)?.category === 'Cash Advance') 
+                     ? `-${parseFloat(item.totalCost ?? item.totalValue ?? 0).toLocaleString()} TZS` 
+                     : `-$${parseFloat(item.totalCost ?? item.totalValue ?? 0).toFixed(2)}`}
                 </td>
                 <td className="px-6 py-4 text-right text-gray-400">
                    <button onClick={() => handleDelete(item.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 rounded-lg transition">

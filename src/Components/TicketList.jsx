@@ -7,12 +7,14 @@ import { filterItemsByPS, getScopedPS } from '../utils';
 function TicketList() {
   const { darkMode, currentUser, activePS } = useAppContext();
   const { items: tickets, loading, deleteItem } = useStorage('ticket');
+  const { items: saleNumbers } = useStorage('salenumber');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSale, setFilterSale] = useState('');
 
   const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
   const scopedPS = getScopedPS(currentUser, activePS);
   const scopedTickets = filterItemsByPS(tickets, scopedPS);
+  const scopedSaleNumbers = filterItemsByPS(saleNumbers, scopedPS);
 
   const filteredTickets = scopedTickets.filter(t => {
     const matchesSearch = 
@@ -21,7 +23,7 @@ function TicketList() {
       t.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.lastName?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesSale = !filterSale || t.saleNumber === filterSale;
+    const matchesSale = !filterSale || t.saleNumberId === filterSale;
     
     return matchesSearch && matchesSale;
   });
@@ -59,9 +61,11 @@ function TicketList() {
             onChange={(e) => setFilterSale(e.target.value)}
           >
             <option value="">All Sales</option>
-            {Array.from(new Set(scopedTickets.map(t => t.saleNumber))).filter(Boolean).sort().map(sn => (
-              <option key={sn} value={sn}>Sale #{sn}</option>
-            ))}
+            {Array.from(new Set(scopedTickets.map(t => t.saleNumberId))).filter(Boolean).map(snId => {
+              const sn = scopedSaleNumbers?.find(s => s.id === snId);
+              const title = sn ? `Sale #${sn.saleNumber} (${sn.marketCenterName})` : `Sale ID ${snId.substring(0,4)}`;
+              return <option key={snId} value={snId}>{title}</option>;
+            })}
           </select>
         </div>
       </div>

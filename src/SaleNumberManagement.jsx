@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { useAppContext } from './context/AppContext';
 import { useStorage } from './hooks/useStorage';
 import { Plus, Edit, Trash2, X } from 'lucide-react';
+import { filterItemsByPS, getScopedPS } from './utils';
 
 function SaleNumberManagement() {
-  const { darkMode } = useAppContext();
+  const { darkMode, currentUser, activePS } = useAppContext();
   const { items, loading, saveItem, deleteItem } = useStorage('salenumber');
   const { items: marketCenters } = useStorage('marketcenter');
   const { items: seasons } = useStorage('season');
+  const { items: tickets = [] } = useStorage('ticket');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ marketCenterId: '', saleNumber: '', seasonId: '', status: 'Active' });
   const [editing, setEditing] = useState(null);
@@ -18,9 +20,23 @@ function SaleNumberManagement() {
       return;
     }
 
+    const isDuplicate = items.some(s => 
+      s.marketCenterId === form.marketCenterId && 
+      s.seasonId === form.seasonId && 
+      s.saleNumber.trim().toLowerCase() === form.saleNumber.trim().toLowerCase() &&
+      (!editing || s.id !== editing.id)
+    );
+
+    if (isDuplicate) {
+      alert("This market center already has exactly this sale number registered for the selected season.");
+      return;
+    }
+
+    const scopedPS = getScopedPS(currentUser, activePS);
     const mc = marketCenters.find(m => m.id === form.marketCenterId);
     const itemData = {
       ...form,
+      ps: scopedPS,
       marketCenterName: mc.name,
       createdAt: editing?.createdAt || new Date().toISOString()
     };
@@ -48,6 +64,9 @@ function SaleNumberManagement() {
       await deleteItem(id);
     }
   };
+
+  const scopedPS = getScopedPS(currentUser, activePS);
+  const displayItems = filterItemsByPS(items, scopedPS);
 
   return (
     <div>
@@ -136,32 +155,40 @@ function SaleNumberManagement() {
               <th className="px-4 py-3 text-left text-sm font-semibold">Market Center</th>
               <th className="px-4 py-3 text-left text-sm font-semibold text-center">Sale Number</th>
               <th className="px-4 py-3 text-left text-sm font-semibold">Season</th>
+              <th className="px-4 py-3 text-center text-sm font-semibold">Tickets</th>
+              <th className="px-4 py-3 text-right text-sm font-semibold">Volume (Kg)</th>
               <th className="px-4 py-3 text-left text-sm font-semibold text-center">Status</th>
               <th className="px-4 py-3 text-left text-sm font-semibold text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {items.map(item => (
+            {displayItems.map(item => {
+              const itemTickets = tickets.filter(t => t.saleNumberId === item.id);
+              const totalVolume = itemTickets.reduce((sum, t) => sum + (parseFloat(t.netWeight || t.mass) || 0), 0);
+              
+              return (
               <tr key={item.id}>
                 <td className="px-4 py-3 font-medium">{item.marketCenterName}</td>
                 <td className="px-4 py-3 text-center font-bold tracking-wider">{item.saleNumber}</td>
                 <td className="px-4 py-3">{item.seasonName}</td>
+                <td className="px-4 py-3 text-center font-semibold text-blue-700">{itemTickets.length}</td>
+                <td className="px-4 py-3 text-right font-bold text-green-700">{totalVolume.toFixed(2)}</td>
                 <td className="px-4 py-3 text-center">
                   <span className={`px-2 py-1 rounded text-xs text-white shadow-sm ${item.status === 'Active' ? 'bg-green-600' : 'bg-gray-600'}`}>
                     {item.status}
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex space-x-2">
-                    <button onClick={() => handleEdit(item)} className="text-blue-600"><Edit className="w-4 h-4" /></button>
-                    <button onClick={() => handleDelete(item.id)} className="text-red-600"><Trash2 className="w-4 h-4" /></button>
+                  <div className="flex space-x-2 justify-end">
+                    <button onClick={() => handleEdit(item)} className="text-blue-600 hover:text-blue-800 transition"><Edit className="w-4 h-4" /></button>
+                    <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-800 transition"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </td>
               </tr>
-            ))}
+            )})}
           </tbody>
         </table>
-        {items.length === 0 && <div className="text-center py-8 text-gray-500">No sale numbers yet</div>}
+        {displayItems.length === 0 && <div className="text-center py-8 text-gray-500">No sale numbers yet</div>}
       </div>
     </div>
   );

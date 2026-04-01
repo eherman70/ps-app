@@ -14,6 +14,7 @@ function SalesSummary() {
   const [capturingSale, setCapturingSale] = useState(null);
   const scopedPS = getScopedPS(currentUser, activePS);
   const scopedTickets = filterItemsByPS(tickets, scopedPS);
+  const scopedSaleNumbers = filterItemsByPS(saleNumbers, scopedPS);
 
   if (capturingSale) {
     return (
@@ -27,9 +28,9 @@ function SalesSummary() {
   }
 
   // Aggregate stats per sale number
-  const salesStats = saleNumbers.map(sn => {
-    // Filter tickets strictly to this sale number
-    const saleTickets = scopedTickets.filter(t => t.saleNumber === sn.saleNumber);
+  const salesStats = scopedSaleNumbers.map(sn => {
+    // Filter tickets strictly to this sale number by UUID
+    const saleTickets = scopedTickets.filter(t => t.saleNumberId === sn.id);
     const bales = saleTickets.length;
     
     // Sum mass and value - using both legacy and new field names for robustness
@@ -50,7 +51,7 @@ function SalesSummary() {
       value: value.toFixed(2),
       avgPrice: avgPrice.toFixed(2)
     };
-  }).filter(stat => scopedPS === 'All' || stat.bales > 0);
+  }).filter(stat => scopedPS === 'All' || stat.bales > 0 || stat.status === 'Active');
 
   return (
     <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow overflow-hidden`}>

@@ -124,17 +124,23 @@ function Reports() {
 
   const renderInputsReport = () => {
     let data = [...scopedInputs];
-    const headers = ['Issue Date', 'Farmer', 'Input Item', 'Quantity', 'Total Cost (USD)', 'PS'];
+    const headers = ['Issue Date', 'Farmer', 'Input Item', 'Quantity', 'Total Value', 'PS'];
     return {
       headers,
-      rows: data.map(i => [
-        new Date(i.issueDate || i.createdAt).toLocaleDateString(),
-        getFarmerName(i.farmerId),
-        i.inputName || getInputTypeName(i.inputTypeId),
-        i.quantity,
-        formatUsd(i.totalCost || i.totalValue || 0),
-        i.ps
-      ]),
+      rows: data.map(i => {
+        const typeObj = inputTypes.find(t => t.id === i.inputTypeId);
+        const name = i.inputName || typeObj?.name || 'Unknown';
+        const isAdvance = i.isCashAdvance || name.toLowerCase().includes('advance') || typeObj?.category === 'Cash Advance';
+        
+        return [
+          new Date(i.issueDate || i.createdAt).toLocaleDateString(),
+          getFarmerName(i.farmerId),
+          name,
+          isAdvance ? '-' : i.quantity,
+          isAdvance ? formatTzs(i.totalCost || i.totalValue || 0) + ' TZS' : formatUsd(i.totalCost || i.totalValue || 0),
+          i.ps
+        ];
+      }),
       title: 'Agricultural Inputs Report'
     };
   };

@@ -386,13 +386,15 @@ async function createTables() {
     )`,
     `CREATE TABLE IF NOT EXISTS sale_numbers (
       id VARCHAR(36) PRIMARY KEY,
-      saleNumber VARCHAR(50) UNIQUE NOT NULL,
+      saleNumber VARCHAR(50) NOT NULL,
       marketCenterId VARCHAR(36) NOT NULL,
       seasonId VARCHAR(36) NOT NULL,
       status VARCHAR(20) NOT NULL,
+      ps VARCHAR(50) DEFAULT 'All',
       createdAt DATETIME NOT NULL,
       FOREIGN KEY (marketCenterId) REFERENCES market_centers(id),
-      FOREIGN KEY (seasonId) REFERENCES seasons(id)
+      FOREIGN KEY (seasonId) REFERENCES seasons(id),
+      UNIQUE(saleNumber, marketCenterId, seasonId)
     )`,
     `CREATE TABLE IF NOT EXISTS tickets (
       id VARCHAR(36) PRIMARY KEY,
@@ -1176,25 +1178,33 @@ app.get('/api/sale-numbers', authenticateToken, async (req, res) => {
 
 app.post('/api/sale-numbers', authenticateToken, async (req, res) => {
   try {
-    const { saleNumber, marketCenterId, seasonId, status } = req.body;
+    const { saleNumber, marketCenterId, seasonId, status, ps } = req.body;
     const id = uuidv4();
-    await db.execute(`INSERT INTO sale_numbers (id, saleNumber, marketCenterId, seasonId, status, createdAt)
-                      VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, saleNumber, marketCenterId, seasonId, status || 'Active',
+    const finalPs = ps || 'All';
+    await db.execute(`INSERT INTO sale_numbers (id, saleNumber, marketCenterId, seasonId, status, ps, createdAt)
+                      VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, saleNumber, marketCenterId, seasonId, status || 'Active', finalPs,
        new Date().toISOString().slice(0, 19).replace('T', ' ')]);
-    res.json({ id, saleNumber, marketCenterId, seasonId, status: status || 'Active' });
+    res.json({ id, saleNumber, marketCenterId, seasonId, status: status || 'Active', ps: finalPs });
   } catch (error) {
+    if (error.message && error.message.includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'This sale number already exists for the selected market center and season' });
+    }
     res.status(500).json({ error: 'Error creating sale number' });
   }
 });
 
 app.put('/api/sale-numbers/:id', authenticateToken, async (req, res) => {
   try {
-    const { saleNumber, marketCenterId, seasonId, status } = req.body;
-    await db.execute('UPDATE sale_numbers SET saleNumber=?, marketCenterId=?, seasonId=?, status=? WHERE id=?',
-      [saleNumber, marketCenterId, seasonId, status, req.params.id]);
-    res.json({ id: req.params.id, saleNumber, marketCenterId, seasonId, status });
+    const { saleNumber, marketCenterId, seasonId, status, ps } = req.body;
+    const finalPs = ps || 'All';
+    await db.execute('UPDATE sale_numbers SET saleNumber=?, marketCenterId=?, seasonId=?, status=?, ps=? WHERE id=?',
+      [saleNumber, marketCenterId, seasonId, status, finalPs, req.params.id]);
+    res.json({ id: req.params.id, saleNumber, marketCenterId, seasonId, status, ps: finalPs });
   } catch (error) {
+    if (error.message && error.message.includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'This sale number already exists for the selected market center and season' });
+    }
     res.status(500).json({ error: 'Error updating sale number' });
   }
 });

@@ -293,7 +293,8 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
     }
   };
 
-  const filteredSaleNumbers = saleNumbers.filter(sn => sn.marketCenterId === selectedMarketCenter);
+  const scopedSaleNumbers = useMemo(() => filterItemsByPS(saleNumbers, activePSValue), [saleNumbers, activePSValue]);
+  const filteredSaleNumbers = scopedSaleNumbers.filter(sn => sn.marketCenterId === selectedMarketCenter);
 
   const farmerOptions = useMemo(() => {
     return farmers
@@ -324,8 +325,8 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
 
   const scopedTickets = useMemo(() => filterItemsByPS(items, activePSValue), [items, activePSValue]);
 
-  const displayTickets = selectedSaleNumber
-    ? scopedTickets.filter(t => t.saleNumber === selectedSaleNumber)
+  const displayTickets = selectedSaleNumberId
+    ? scopedTickets.filter(t => t.saleNumberId === selectedSaleNumberId)
     : scopedTickets;
 
   return (

@@ -234,11 +234,19 @@ function PaymentModule() {
       const sales = farmerTickets.reduce((sum, t) => sum + parseFloat(t.value || t.totalValue || 0), 0);
 
       const inputByType = {};
+      const advanceByType = {};
+      
       for (const issue of farmerInputs) {
-        const typeName = issue.inputName
-          || inputTypes.find(t => t.id === issue.inputTypeId)?.name
-          || 'Other';
-        inputByType[typeName] = (inputByType[typeName] || 0) + parseFloat(issue.totalCost || issue.totalValue || 0);
+        const inputTypeObj = inputTypes.find(t => t.id === issue.inputTypeId);
+        const typeName = issue.inputName || inputTypeObj?.name || 'Other';
+        
+        const isAdvance = issue.isCashAdvance || issue.inputName?.toLowerCase().includes('advance') || inputTypeObj?.category === 'Cash Advance' || typeName.toLowerCase().includes('advance');
+        
+        if (isAdvance) {
+          advanceByType[typeName] = (advanceByType[typeName] || 0) + parseFloat(issue.totalCost || issue.totalValue || 0);
+        } else {
+          inputByType[typeName] = (inputByType[typeName] || 0) + parseFloat(issue.totalCost || issue.totalValue || 0);
+        }
       }
 
       const totalInputs = Object.values(inputByType).reduce((sum, value) => sum + value, 0);
@@ -249,10 +257,17 @@ function PaymentModule() {
 
       const psDeductions = deductions.byPs?.[farmer.ps] || [];
       const deductionByName = {};
+      
       for (const deduction of psDeductions) {
         const name = (deduction.name || 'Deduction').toUpperCase();
         deductionByName[name] = (deductionByName[name] || 0) + calculateDeductionAmount(deduction, mass);
       }
+      
+      for (const [advName, advAmt] of Object.entries(advanceByType)) {
+        const name = advName.toUpperCase();
+        deductionByName[name] = (deductionByName[name] || 0) + advAmt;
+      }
+
       const totalTzsDeductions = Object.values(deductionByName).reduce((sum, val) => sum + val, 0);
       const malipoHalisi = grossTzs - totalTzsDeductions;
 
