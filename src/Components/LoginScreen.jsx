@@ -104,9 +104,9 @@ function LoginScreen() {
             {loading ? (isRegistering ? 'Registering...' : 'Logging in...') : (isRegistering ? 'Create Account' : 'Login')}
           </button>
         </div>
-        
+
         <div className="mt-4 text-center">
-          <button 
+          <button
             onClick={() => { setIsRegistering(!isRegistering); setError(''); }}
             className={`text-sm font-medium hover:underline ${darkMode ? 'text-green-400' : 'text-green-600'}`}
           >
@@ -117,7 +117,7 @@ function LoginScreen() {
         {!isRegistering && (
           <div className={`mt-6 p-4 ${darkMode ? 'bg-gray-700' : 'bg-blue-50'} rounded-lg`}>
             <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-              <strong>Demo:</strong> admin / admin123
+              {/* <strong>Demo:</strong> admin / admin123 */}
             </p>
           </div>
         )}
