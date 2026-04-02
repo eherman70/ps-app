@@ -353,7 +353,7 @@ function GradeManagement() {
                   </div>
                 </td>
                 <td className="px-6 py-4 font-bold text-indigo-600 dark:text-indigo-400">
-                   ${parseFloat(item.price).toFixed(2)}
+                   ${parseFloat(item.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
                 <td className="px-6 py-4 text-center">
                   <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${

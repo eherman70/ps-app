@@ -241,7 +241,7 @@ function IssueInputs() {
                 <td className="px-6 py-4 text-right font-bold text-red-600 dark:text-red-400">
                    {item.isCashAdvance || item.inputName?.toLowerCase().includes('advance') || (inputTypes.find(t => t.id === item.inputTypeId)?.category === 'Cash Advance') 
                      ? `-${parseFloat(item.totalCost ?? item.totalValue ?? 0).toLocaleString()} TZS` 
-                     : `-$${parseFloat(item.totalCost ?? item.totalValue ?? 0).toFixed(2)}`}
+                     : `-$${parseFloat(item.totalCost ?? item.totalValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 </td>
                 <td className="px-6 py-4 text-right text-gray-400">
                    <button onClick={() => handleDelete(item.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 rounded-lg transition">

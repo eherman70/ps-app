@@ -13,7 +13,13 @@ function PaymentModule() {
   const { items: seasons } = useStorage('season');
   const { items: saleNumbers } = useStorage('salenumber');
   const { items: payments, refreshItems: refreshPayments } = useStorage('payment');
+  const { items: primarySocieties } = useStorage('ps');
 
+  const getPsName = (code) => {
+    if (!code || code === 'All') return code;
+    const match = primarySocieties.find(p => p.code === code);
+    return match ? match.name : code;
+  };
   const role = (currentUser?.role || '').toLowerCase();
   const isSupervisor = role === 'admin' || role === 'supervisor';
   const scopedPS = getScopedPS(currentUser, activePS);
@@ -356,6 +362,7 @@ function PaymentModule() {
     return {
       farmerId: row.farmer.id,
       pcnId: null,
+      mass: parseFloat(row.mass || 0),
       tobaccoAmount: parseFloat(row.sales || 0),
       inputDeduction,
       usdBalance: parseFloat(row.usdBaki || 0),
@@ -366,7 +373,9 @@ function PaymentModule() {
       totalDeductions: parseFloat(row.totalTzsDeductions || 0),
       netPayment: parseFloat(amountToPay || 0),
       paymentDate: new Date().toISOString().slice(0, 10),
-      ps: row.farmer.ps
+      ps: row.farmer.ps,
+      inputsBreakdown: JSON.stringify(row.inputByType || {}),
+      deductionsBreakdown: JSON.stringify(row.deductionByName || {})
     };
   };
 
@@ -520,24 +529,55 @@ function PaymentModule() {
     return seasonMatch?.name || selectedSeason || '-';
   }, [seasons, selectedSeason]);
 
-  const formatUsd = (value) => `$${parseFloat(value || 0).toFixed(2)}`;
-  const formatUsdDeduction = (value) => `-$${parseFloat(value || 0).toFixed(2)}`;
+  const currentDisplayedPS = isSupervisor ? psFilter : scopedPS;
+  const currentDisplayedPSName = getPsName(currentDisplayedPS);
+  const isSinglePS = currentDisplayedPS && currentDisplayedPS !== 'All';
+
+  const formatUsd = (value) => `$${parseFloat(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formatUsdDeduction = (value) => `-$${parseFloat(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const formatTzs = (value) => parseFloat(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
   const formatTzsDeduction = (value) => `-${formatTzs(value)}`;
 
   const exportCSV = () => {
-    const headers = ['Farmer #', 'Name', 'Society', 'Mass (kg)', 'Sales (USD)', ...inputColumns.map(c => `${c} (USD)`), 'USD Baki', 'Gross TZS', ...deductionColumns, 'NET TZS'];
-    const body = rows.map(row => [
-      row.farmer.farmerNumber || '',
-      `${row.farmer.firstName || ''} ${row.farmer.lastName || ''}`.trim(),
-      row.farmer.ps || '',
-      row.mass.toFixed(2),
-      formatUsd(row.sales),
-      ...inputColumns.map(c => formatUsdDeduction(row.inputByType[c] || 0)),
-      formatUsd(row.usdBaki),
-      formatTzs(row.grossTzs),
-      ...deductionColumns.map(c => formatTzsDeduction(row.deductionByName[c] || 0)),
-      formatTzs(row.malipoHalisi)
+    const headers = [
+      'Farmer #', 'Name', ...(isSinglePS ? [] : ['Society']), 'Mass (kg)', 'Sales (USD)', 
+      ...inputColumns.map(c => `${c} (USD)`), 
+      'USD Baki', 'Gross TZS', 
+      ...deductionColumns, 
+      'NET TZS', 'Paid to Date (TZS)', 'Remaining (TZS)'
+    ];
+
+    const body = rows.map(row => {
+      const previouslyPaid = parseFloat(farmerPaidTotals[row.farmer.id] || 0);
+      const remaining = parseFloat(row.malipoHalisi || 0) - previouslyPaid;
+
+      return [
+        row.farmer.farmerNumber || '',
+        `${row.farmer.firstName || ''} ${row.farmer.lastName || ''}`.trim(),
+        ...(isSinglePS ? [] : [getPsName(row.farmer.ps) || '']),
+        row.mass.toFixed(2),
+        formatUsd(row.sales),
+        ...inputColumns.map(c => formatUsdDeduction(row.inputByType[c] || 0)),
+        formatUsd(row.usdBaki),
+        formatTzs(row.grossTzs),
+        ...deductionColumns.map(c => formatTzsDeduction(row.deductionByName[c] || 0)),
+        formatTzs(row.malipoHalisi),
+        formatTzs(previouslyPaid),
+        formatTzs(remaining)
+      ];
+    });
+
+    body.push([
+      'TOTAL', '', ...(isSinglePS ? [] : ['']),
+      totals.mass.toFixed(2),
+      formatUsd(totals.sales),
+      ...inputColumns.map(c => formatUsdDeduction(totals.byType[c] || 0)),
+      formatUsd(totals.usdBaki),
+      formatTzs(totals.grossTzs),
+      ...deductionColumns.map(c => formatTzsDeduction(totals.deductionByName[c] || 0)),
+      formatTzs(totals.malipoHalisi),
+      formatTzs(totalPaidToDateInView),
+      formatTzs(totalRemainingInView)
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,'
@@ -548,6 +588,78 @@ function PaymentModule() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const exportExcel = () => {
+    const headers = [
+      'Farmer #', 'Name', ...(isSinglePS ? [] : ['Society']), 'Mass (kg)', 'Sales (USD)', 
+      ...inputColumns.map(c => `${c} (USD)`), 
+      'USD Baki', 'Gross TZS', 
+      ...deductionColumns, 
+      'NET TZS', 'Paid to Date (TZS)', 'Remaining (TZS)'
+    ];
+
+    const body = rows.map(row => {
+      const previouslyPaid = parseFloat(farmerPaidTotals[row.farmer.id] || 0);
+      const remaining = parseFloat(row.malipoHalisi || 0) - previouslyPaid;
+
+      return [
+        row.farmer.farmerNumber || '',
+        `${row.farmer.firstName || ''} ${row.farmer.lastName || ''}`.trim(),
+        ...(isSinglePS ? [] : [getPsName(row.farmer.ps) || '']),
+        row.mass.toFixed(2),
+        formatUsd(row.sales),
+        ...inputColumns.map(c => formatUsdDeduction(row.inputByType[c] || 0)),
+        formatUsd(row.usdBaki),
+        formatTzs(row.grossTzs),
+        ...deductionColumns.map(c => formatTzsDeduction(row.deductionByName[c] || 0)),
+        formatTzs(row.malipoHalisi),
+        formatTzs(previouslyPaid),
+        formatTzs(remaining)
+      ];
+    });
+
+    body.push([
+      'TOTAL', '', ...(isSinglePS ? [] : ['']),
+      totals.mass.toFixed(2),
+      formatUsd(totals.sales),
+      ...inputColumns.map(c => formatUsdDeduction(totals.byType[c] || 0)),
+      formatUsd(totals.usdBaki),
+      formatTzs(totals.grossTzs),
+      ...deductionColumns.map(c => formatTzsDeduction(totals.deductionByName[c] || 0)),
+      formatTzs(totals.malipoHalisi),
+      formatTzs(totalPaidToDateInView),
+      formatTzs(totalRemainingInView)
+    ]);
+
+    let tableHTML = `<table><tr><td colspan="${headers.length}" style="font-size: 20px; font-weight: bold; text-align: center;">${isSinglePS ? `${currentDisplayedPSName} Payment Report - Season ${selectedSeasonLabel}` : `Tobacco Sales - Payments Report - Season ${selectedSeasonLabel}`}</td></tr></table>`;
+    tableHTML += `<table border="1"><thead><tr>`;
+    headers.forEach(h => { tableHTML += `<th style="background-color: #047857; color: white;">${h}</th>`; });
+    tableHTML += `</tr></thead><tbody>`;
+
+    body.forEach(row => {
+      tableHTML += `<tr>`;
+      row.forEach(cell => { tableHTML += `<td>${String(cell)}</td>`; });
+      tableHTML += `</tr>`;
+    });
+    tableHTML += `</tbody></table>`;
+
+    const excelData = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="utf-8"></head>
+      <body>${tableHTML}</body>
+      </html>
+    `;
+
+    const blob = new Blob([excelData], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Payment_Summary_${new Date().toISOString().slice(0, 10)}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -572,10 +684,10 @@ function PaymentModule() {
               className={`px-3 py-2 border rounded-lg min-w-[200px] ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'}`}
             >
               <option value="All">All PS</option>
-              {availablePsFilters.map(ps => <option key={ps} value={ps}>{ps}</option>)}
+              {availablePsFilters.map(ps => <option key={ps} value={ps}>{getPsName(ps)}</option>)}
             </select>
           )}
-          <button onClick={exportCSV} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-green-600 border-green-400">
+          <button onClick={exportExcel} className="px-3 py-2 border rounded-lg flex items-center gap-2 text-green-600 border-green-400">
             <Download className="w-4 h-4" /> Excel
           </button>
           <button onClick={exportCSV} className={`px-3 py-2 border rounded-lg flex items-center gap-2 ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}>
@@ -598,7 +710,7 @@ function PaymentModule() {
             className={`w-full px-3 py-2 border rounded-lg mb-3 ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
           >
             <option value="">Choose a Primary Society...</option>
-            {[...new Set(farmers.map(f => f.ps).filter(Boolean))].map(ps => <option key={ps} value={ps}>{ps}</option>)}
+            {[...new Set(farmers.map(f => f.ps).filter(Boolean))].map(ps => <option key={ps} value={ps}>{getPsName(ps)}</option>)}
           </select>
 
           {ratePs && (
@@ -642,7 +754,7 @@ function PaymentModule() {
             className={`w-full px-3 py-2 border rounded-lg mb-3 ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
           >
             <option value="">Choose PS...</option>
-            {[...new Set(farmers.map(f => f.ps).filter(Boolean))].map(ps => <option key={ps} value={ps}>{ps}</option>)}
+            {[...new Set(farmers.map(f => f.ps).filter(Boolean))].map(ps => <option key={ps} value={ps}>{getPsName(ps)}</option>)}
           </select>
 
           {showDeductionForm && isSupervisor && (
@@ -771,7 +883,7 @@ function PaymentModule() {
       )}
 
       <div className="payment-print-only payment-print-title hidden mb-4 text-black">
-        <h2 className="text-xl font-bold">Tobacco Sales - Payments Report</h2>
+        <h2 className="text-xl font-bold">{isSinglePS ? `${currentDisplayedPSName} Payment Report` : 'Tobacco Sales - Payments Report'}</h2>
         <p className="text-sm mt-1">Season: {selectedSeasonLabel}</p>
       </div>
 
@@ -786,7 +898,7 @@ function PaymentModule() {
               )}
               <th className="px-3 py-2 text-left bg-emerald-700 text-white font-semibold">Farmer #</th>
               <th className="px-3 py-2 text-left bg-emerald-700 text-white font-semibold">Name</th>
-              <th className="px-3 py-2 text-left bg-emerald-700 text-white font-semibold">Society</th>
+              {!isSinglePS && <th className="px-3 py-2 text-left bg-emerald-700 text-white font-semibold">Society</th>}
               <th className="px-3 py-2 text-right bg-emerald-700 text-white font-semibold">Mass (kg)</th>
               <th className="px-3 py-2 text-right bg-emerald-700 text-white font-semibold">Sales (USD)</th>
               {inputColumns.map(col => (
@@ -826,7 +938,7 @@ function PaymentModule() {
                     )}
                   </div>
                 </td>
-                <td className="px-3 py-2">{row.farmer.ps}</td>
+                {!isSinglePS && <td className="px-3 py-2">{getPsName(row.farmer.ps)}</td>}
                 <td className="px-3 py-2 text-right">{row.mass.toFixed(2)}</td>
                 <td className="px-3 py-2 text-right">{formatUsd(row.sales)}</td>
                 {inputColumns.map(col => (

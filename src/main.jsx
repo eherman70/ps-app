@@ -197,7 +197,8 @@ window.storage = {
       const entity = entityMap[normalizedPrefix] || normalizedPrefix;
       const items = await window.api.getAll(entity);
       return {
-        keys: items.map(item => `${normalizedPrefix}_${item.id}`)
+        keys: items.map(item => `${normalizedPrefix}_${item.id}`),
+        _items: items // Optimization: fast-path for useStorage bulk loading
       };
     } catch (e) {
       // Fall back to localStorage

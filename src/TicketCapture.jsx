@@ -664,7 +664,7 @@ function TicketCapture({ onClose, prefilledMarketCenter, prefilledSaleNumber, pr
                     <td className="px-4 py-3">{item.firstName ? `${item.firstName} ${item.lastName}` : item.farmerName}</td>
                     <td className="px-4 py-3">{item.gradeName}</td>
                     <td className="px-4 py-3">{item.netWeight || item.mass}</td>
-                    <td className="px-4 py-3 font-medium">${parseFloat(item.totalValue || item.value || 0).toFixed(2)}</td>
+                    <td className="px-4 py-3 font-medium">${parseFloat(item.totalValue || item.value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     {isSupervisor && (
                       <td className="px-4 py-3">
                         <button onClick={() => handleDelete(item.id)} className="text-red-600">

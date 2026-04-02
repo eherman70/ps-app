@@ -11,12 +11,32 @@ export function useStorage(key) {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   };
 
+  const formatItem = (parsed, id) => {
+    const formatted = { ...parsed, id };
+    if (key === 'farmer') {
+      if (typeof formatted.firstName === 'string') formatted.firstName = formatted.firstName.toUpperCase();
+      if (typeof formatted.lastName === 'string') formatted.lastName = formatted.lastName.toUpperCase();
+      if (typeof formatted.middleName === 'string') formatted.middleName = formatted.middleName.toUpperCase();
+    }
+    return formatted;
+  };
+
   const loadItems = async () => {
     try {
       setLoading(true);
       const prefix = `${key}_`;
       const isApiBacked = Boolean(window.storage?.getEntityFromKey?.(key));
       const data = await window.storage.list(prefix);
+
+      // Fast path: if the adapter provided full items, use them immediately to bypass N+1
+      if (isApiBacked && data?._items) {
+        // Cleanup stale ghost record (async background fire & forget)
+        window.storage.remove(key).catch(() => {});
+        setItems(data._items.map(item => formatItem(item, item.id || 'legacy')));
+        setLoading(false);
+        return;
+      }
+
       const keys = [...(data?.keys || [])];
 
       // Backward compatibility for non-API storage only
@@ -43,7 +63,7 @@ export function useStorage(key) {
             const derivedId = itemKey.startsWith(prefix)
               ? itemKey.slice(prefix.length)
               : 'legacy';
-            parsedItems.push({ ...parsed, id: parsed.id || derivedId });
+            parsedItems.push(formatItem(parsed, parsed.id || derivedId));
           }
         }
       }

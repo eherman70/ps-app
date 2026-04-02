@@ -98,7 +98,7 @@ function TicketList() {
                     <div className="text-[10px] text-gray-400">{ticket.gradeName}</div>
                   </td>
                   <td className="px-6 py-4 font-bold">{parseFloat(ticket.netWeight || ticket.mass || 0).toFixed(1)}</td>
-                  <td className="px-6 py-4 font-bold text-indigo-600">${parseFloat(ticket.totalValue || ticket.value || 0).toFixed(2)}</td>
+                  <td className="px-6 py-4 font-bold text-indigo-600">${parseFloat(ticket.totalValue || ticket.value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="px-2 py-1 bg-blue-600 shadow-sm text-white text-[10px] font-bold rounded-lg uppercase">
                       Sale #{ticket.saleNumber}

@@ -6,15 +6,15 @@ export default function Header() {
 
   return (
     <header className="px-8 pt-8 pb-4 flex items-center justify-between z-10">
-      <div className="flex-1 max-w-2xl">
-        <div className={`flex items-center w-full rounded-2xl px-5 py-4 shadow-sm transition-shadow hover:shadow-md ${darkMode ? 'bg-gray-700' : 'bg-green-50'}`}>
-          <Search className="w-5 h-5 text-gray-400 mr-4" />
-          <input 
-            type="text" 
-            placeholder="Search farmers, tickets, sections..." 
+      <div className="flex-1 max-w-2xl w-full">
+        {/* <div className={`flex items-center w-full rounded-2xl px-5 py-4 shadow-sm transition-shadow hover:shadow-md ${darkMode ? 'bg-gray-700' : 'bg-green-50'}`}>
+           <Search className="w-5 h-5 text-gray-400 mr-4" />
+          <input
+            type="text"
+            placeholder="Search farmers, tickets, sections..."
             className="bg-transparent border-none outline-none w-full text-base dark:text-white placeholder-gray-400"
-          />
-        </div>
+          /> 
+        </div> */}
       </div>
 
       <div className="flex items-center space-x-4 ml-6">
@@ -29,13 +29,13 @@ export default function Header() {
           </button>
         )}
 
-        <button 
-          onClick={toggleDarkMode} 
+        <button
+          onClick={toggleDarkMode}
           className={`p-4 rounded-2xl transition-all shadow-sm hover:shadow-md ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-green-50 hover:bg-green-100'}`}
         >
           {darkMode ? <Sun className="w-6 h-6 text-yellow-500" /> : <Moon className="w-6 h-6 text-slate-900" />}
         </button>
       </div>
-    </header>
+    </header >
   );
 }

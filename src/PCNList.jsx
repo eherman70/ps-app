@@ -258,7 +258,7 @@ function PCNList() {
             {selectedTickets.length > 0 && (
               <div className="text-sm mt-1">
                 <span>Total Mass: {selectedTickets.reduce((sum, t) => sum + parseFloat(t.mass || t.netWeight || 0), 0).toFixed(2)} Kg</span>
-                <span className="ml-4">Total Value: ${selectedTickets.reduce((sum, t) => sum + parseFloat(t.value || t.totalValue || 0), 0).toFixed(2)}</span>
+                <span className="ml-4">Total Value: ${selectedTickets.reduce((sum, t) => sum + parseFloat(t.value || t.totalValue || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             )}
           </div>
@@ -289,7 +289,7 @@ function PCNList() {
                           </div>
                           <div className="text-right">
                             <p className="font-medium text-sm">{ticket.mass || ticket.netWeight} Kg</p>
-                            <p className="text-xs">${parseFloat(ticket.value || ticket.totalValue || 0).toFixed(2)}</p>
+                            <p className="text-xs">${parseFloat(ticket.value || ticket.totalValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                           </div>
                         </div>
                       </div>
@@ -367,7 +367,7 @@ function PCNList() {
                 <td className="px-4 py-3">{pcn.ps}</td>
                 <td className="px-4 py-3">{pcn.totalTickets}</td>
                 <td className="px-4 py-3">{parseFloat(pcn.totalWeight || 0).toFixed(2)}</td>
-                <td className="px-4 py-3">${parseFloat(pcn.totalValue || 0).toFixed(2)}</td>
+                <td className="px-4 py-3">${parseFloat(pcn.totalValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-1 rounded text-xs font-semibold ${statusColor(pcn.status)}`}>
                     {pcn.status}
@@ -420,7 +420,7 @@ function PCNList() {
               <div className="flex justify-between"><span className="text-gray-500">Total Tickets</span><span>{detailPcn.totalTickets}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Total Farmers</span><span>{detailPcn.totalFarmers}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Total Mass</span><span>{parseFloat(detailPcn.totalWeight || 0).toFixed(2)} Kg</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Total Value</span><span>${parseFloat(detailPcn.totalValue || 0).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Total Value</span><span>${parseFloat(detailPcn.totalValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Created</span><span>{new Date(detailPcn.createdAt).toLocaleString()}</span></div>
               {detailPcn.closedAt && <div className="flex justify-between"><span className="text-gray-500">Closed</span><span>{new Date(detailPcn.closedAt).toLocaleString()} by {detailPcn.closedBy}</span></div>}
               {detailPcn.approvedAt && <div className="flex justify-between"><span className="text-gray-500">Approved</span><span>{new Date(detailPcn.approvedAt).toLocaleString()} by {detailPcn.approvedBy}</span></div>}

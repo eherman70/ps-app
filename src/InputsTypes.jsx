@@ -168,7 +168,7 @@ function InputTypes() {
                   </span>
                 </td>
                 <td className="px-6 py-4 font-bold text-indigo-600 dark:text-indigo-400">
-                   ${parseFloat(item.unitPrice).toFixed(2)}
+                   ${parseFloat(item.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
                 <td className="px-6 py-4 font-medium text-gray-500">
                    {item.unit}

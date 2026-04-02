@@ -5,7 +5,7 @@ import { Download, FileSpreadsheet, Users, Leaf, Banknote, Tag, Printer, Chevron
 import { filterItemsByPS, getScopedPS } from '../utils';
 
 function Reports() {
-  const { darkMode, currentUser, activePS } = useAppContext();
+  const { darkMode, currentUser, activePS, activeTabOverride, setActiveTabOverride } = useAppContext();
   
   const { items: farmers } = useStorage('farmer');
   const { items: seasons } = useStorage('season');
@@ -14,8 +14,63 @@ function Reports() {
   const { items: tickets } = useStorage('ticket');
   const { items: payments } = useStorage('payment');
   const { items: grades } = useStorage('grade');
+  const { items: primarySocieties } = useStorage('ps');
 
-  const [reportType, setReportType] = useState('sales'); 
+  const getColumnAlignment = (header) => {
+    const lower = String(header).toLowerCase();
+    if (lower.includes('usd') || lower.includes('tzs') || lower.includes('mass') || lower.includes('bales') || lower.includes('weight') || lower.includes('price') || lower.includes('amount') || lower.includes('rate') || lower.includes('quantity')) {
+      return 'text-right';
+    }
+    return 'text-left';
+  };
+
+  const getCellColor = (val, header) => {
+    const str = String(val || '').trim();
+    if (str === '-') return 'text-gray-400 font-light';
+    if (str.startsWith('-$') || (str.startsWith('-') && /[0-9]/.test(str))) return 'text-red-600 dark:text-red-400 font-bold';
+    
+    const lowerHeader = String(header).toLowerCase();
+    if (lowerHeader.includes('net tzs') || lowerHeader.includes('remaining') || lowerHeader.includes('paid to date')) {
+       return 'text-emerald-600 dark:text-emerald-400 font-black tracking-wide bg-emerald-50 dark:bg-emerald-900/10';
+    }
+    if (str.startsWith('$')) return 'text-emerald-600 dark:text-emerald-400 font-semibold';
+    if (str.includes('%')) return 'text-blue-600 dark:text-blue-400 font-bold';
+    if (lowerHeader.includes('farmer #') || lowerHeader.includes('sale number') || lowerHeader.includes('grade code')) {
+       return 'text-indigo-600 dark:text-indigo-400 font-bold';
+    }
+    return 'text-gray-800 dark:text-gray-200';
+  };
+
+  const [exchangeRates, setExchangeRates] = useState({ byPs: {} });
+  const [deductions, setDeductions] = useState({ byPs: {} });
+  const [globalRate, setGlobalRate] = useState(0);
+
+  useEffect(() => {
+    const loadConfigs = async () => {
+      try {
+        const [rateCfg, deductionCfg, globalRateCfg] = await Promise.all([
+          window.api.request('/exchange-rates').catch(() => ({ byPs: {} })),
+          window.api.request('/tzs-deductions').catch(() => ({ byPs: {} })),
+          window.api.request('/exchange-rate').catch(() => ({ rate: '' }))
+        ]);
+        setExchangeRates(rateCfg && rateCfg.byPs ? rateCfg : { byPs: {} });
+        setDeductions(deductionCfg && deductionCfg.byPs ? deductionCfg : { byPs: {} });
+        const gr = parseFloat(globalRateCfg?.rate || 0);
+        if (gr > 0) setGlobalRate(gr);
+      } catch (e) {
+        console.error('Failed to load configs:', e);
+      }
+    };
+    loadConfigs();
+  }, []);
+
+  const getPsName = (code) => {
+    if (!code || code === 'All') return code;
+    const match = primarySocieties.find(p => p.code === code);
+    return match ? match.name : code;
+  };
+
+  const [reportType, setReportType] = useState(activeTabOverride || 'sales'); 
   const [seasonFilter, setSeasonFilter] = useState('');
   const [showSalesMenu, setShowSalesMenu] = useState(false);
   const [selectedSales, setSelectedSales] = useState([]);
@@ -25,10 +80,30 @@ function Reports() {
 
   const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
   const activePSValue = getScopedPS(currentUser, activePS);
+  const currentDisplayedPSName = getPsName(activePSValue);
+  const isSinglePS = activePSValue && activePSValue !== 'All';
+
   const scopedFarmers = useMemo(() => filterItemsByPS(farmers, activePSValue), [farmers, activePSValue]);
   const scopedInputs = useMemo(() => filterItemsByPS(inputs, activePSValue), [inputs, activePSValue]);
   const scopedTickets = useMemo(() => filterItemsByPS(tickets, activePSValue), [tickets, activePSValue]);
   const scopedPayments = useMemo(() => filterItemsByPS(payments, activePSValue), [payments, activePSValue]);
+
+  const farmerPaidTotals = useMemo(() => {
+    const totals = {};
+    for (const payment of payments) {
+      if (payment?.farmerId) {
+        totals[payment.farmerId] = (totals[payment.farmerId] || 0) + parseFloat(payment.netPayment || 0);
+      }
+    }
+    return totals;
+  }, [payments]);
+
+  useEffect(() => {
+    if (activeTabOverride) {
+      setReportType(activeTabOverride);
+      setActiveTabOverride(null);
+    }
+  }, [activeTabOverride, setActiveTabOverride]);
 
   useEffect(() => {
     const clearPrintMode = () => {
@@ -91,7 +166,7 @@ function Reports() {
     return i ? i.name : 'Unknown';
   };
 
-  const formatUsd = (value) => `$${parseFloat(value || 0).toFixed(2)}`;
+  const formatUsd = (value) => `$${parseFloat(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const formatTzs = (value) => parseFloat(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
   const exportToCSV = (filename, dataRows) => {
@@ -107,24 +182,54 @@ function Reports() {
     document.body.removeChild(link);
   };
 
+  const exportToExcel = (filename, headers, rows) => {
+    let tableHTML = `<table border="1"><thead><tr>`;
+    headers.forEach(h => { tableHTML += `<th style="background-color: #2563eb; color: white;">${h}</th>`; });
+    tableHTML += `</tr></thead><tbody>`;
+
+    rows.forEach(row => {
+      tableHTML += `<tr>`;
+      row.forEach(cell => { tableHTML += `<td>${String(cell)}</td>`; });
+      tableHTML += `</tr>`;
+    });
+    tableHTML += `</tbody></table>`;
+
+    const excelData = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="utf-8"></head>
+      <body>${tableHTML}</body>
+      </html>
+    `;
+
+    const blob = new Blob([excelData], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${filename}_${new Date().toISOString().slice(0, 10)}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const renderFarmersReport = () => {
     let data = [...scopedFarmers];
     if (seasonFilter) data = data.filter(f => f.seasonId === seasonFilter || f.season === seasonFilter);
     const formatVolumeKg = (value) => `${Math.round(parseFloat(value || 0))} kgs`;
-    const headers = ['Farmer #', 'Full Name', 'Gender', 'Village', 'Phone', 'Hectares', 'Vol(Kg)', 'Season', 'PS'];
+    const headers = ['Farmer #', 'Full Name', 'Gender', 'Village', 'Phone', 'Hectares', 'Vol(Kg)', 'Season', ...(isSinglePS ? [] : ['PS'])];
     return {
       headers,
       rows: data.map(f => [
         f.farmerNumber, `${f.firstName} ${f.lastName}`, f.gender || '-', f.village, f.phoneNumber || '-', 
-        f.hectares || '0', formatVolumeKg(f.contractedVolume), f.seasonName || f.season || '-', f.ps
+        f.hectares || '0', formatVolumeKg(f.contractedVolume), f.seasonName || f.season || '-', ...(isSinglePS ? [] : [getPsName(f.ps) || ''])
       ]),
-      title: 'Farmer Registration List'
+      title: isSinglePS ? `${currentDisplayedPSName} Farmer Registration List` : 'Farmer Registration List'
     };
   };
 
   const renderInputsReport = () => {
     let data = [...scopedInputs];
-    const headers = ['Issue Date', 'Farmer', 'Input Item', 'Quantity', 'Total Value', 'PS'];
+    const headers = ['Issue Date', 'Farmer', 'Input Item', 'Quantity', 'Total Value', ...(isSinglePS ? [] : ['PS'])];
     return {
       headers,
       rows: data.map(i => {
@@ -138,10 +243,10 @@ function Reports() {
           name,
           isAdvance ? '-' : i.quantity,
           isAdvance ? formatTzs(i.totalCost || i.totalValue || 0) + ' TZS' : formatUsd(i.totalCost || i.totalValue || 0),
-          i.ps
+          ...(isSinglePS ? [] : [getPsName(i.ps) || ''])
         ];
       }),
-      title: 'Agricultural Inputs Report'
+      title: isSinglePS ? `${currentDisplayedPSName} Agricultural Inputs Report` : 'Agricultural Inputs Report'
     };
   };
 
@@ -167,7 +272,7 @@ function Reports() {
     return {
       headers,
       rows: result.map(g => [g.code, g.name, g.category, g.level, g.bales.toString(), g.weight.toFixed(2), formatUsd(g.value)]),
-      title: 'Grade Distribution Report'
+      title: isSinglePS ? `${currentDisplayedPSName} Grade Distribution Report` : 'Grade Distribution Report'
     };
   };
 
@@ -193,7 +298,7 @@ function Reports() {
       f.totalBales > 0 ? (f.premiumBales / f.totalBales * 100).toFixed(1) + '%' : '0%',
       f.totalWeight.toFixed(2), f.premiumWeight.toFixed(2)
     ]);
-    return { headers, rows, title: 'Premium Leaf Production Ratio' };
+    return { headers, rows, title: isSinglePS ? `${currentDisplayedPSName} Premium Leaf Production Ratio` : 'Premium Leaf Production Ratio' };
   };
 
   const renderPremiumSummary = () => {
@@ -253,21 +358,119 @@ function Reports() {
   };
 
   const renderPaymentsReport = () => {
-    let data = [...scopedPayments];
-    const headers = ['Date', 'Farmer', 'Tobacco (USD)', 'Inputs (USD)', 'Net USD', 'Rate', 'Net TZS', 'PS'];
+    const calculateDeductionAmount = (deduction, mass) => {
+      const amount = parseFloat(deduction?.amount || 0);
+      const type = String(deduction?.type || '').toLowerCase();
+      if (type.includes('kg')) {
+        return amount * mass;
+      }
+      return amount;
+    };
+
+    const rows = scopedFarmers.map((farmer) => {
+      const farmerTickets = scopedTickets.filter(t => t.farmerId === farmer.id);
+      const farmerInputs = scopedInputs.filter(i => i.farmerId === farmer.id);
+
+      const mass = farmerTickets.reduce((sum, t) => sum + parseFloat(t.mass || t.netWeight || 0), 0);
+      const sales = farmerTickets.reduce((sum, t) => sum + parseFloat(t.value || t.totalValue || 0), 0);
+
+      const inputByType = {};
+      const advanceByType = {};
+      
+      for (const issue of farmerInputs) {
+        const inputTypeObj = inputTypes.find(t => t.id === issue.inputTypeId);
+        const typeName = issue.inputName || inputTypeObj?.name || 'Other';
+        
+        const isAdvance = issue.isCashAdvance || issue.inputName?.toLowerCase().includes('advance') || inputTypeObj?.category === 'Cash Advance' || typeName.toLowerCase().includes('advance');
+        
+        if (isAdvance) {
+          advanceByType[typeName] = (advanceByType[typeName] || 0) + parseFloat(issue.totalCost || issue.totalValue || 0);
+        } else {
+          inputByType[typeName] = (inputByType[typeName] || 0) + parseFloat(issue.totalCost || issue.totalValue || 0);
+        }
+      }
+
+      const totalInputs = Object.values(inputByType).reduce((sum, value) => sum + value, 0);
+      const usdBaki = sales - totalInputs;
+      const psRate = parseFloat(exchangeRates.byPs?.[farmer.ps?.trim()] || exchangeRates.byPs?.[farmer.ps] || 0);
+      const rate = psRate > 0 ? psRate : globalRate;
+      const grossTzs = usdBaki * rate;
+
+      const psDeductions = deductions.byPs?.[farmer.ps] || [];
+      const deductionByName = {};
+      
+      for (const deduction of psDeductions) {
+        const name = (deduction.name || 'Deduction').toUpperCase();
+        deductionByName[name] = (deductionByName[name] || 0) + calculateDeductionAmount(deduction, mass);
+      }
+      
+      for (const [advName, advAmt] of Object.entries(advanceByType)) {
+        const name = advName.toUpperCase();
+        deductionByName[name] = (deductionByName[name] || 0) + advAmt;
+      }
+
+      const totalTzsDeductions = Object.values(deductionByName).reduce((sum, val) => sum + val, 0);
+      const malipoHalisi = grossTzs - totalTzsDeductions;
+      const previouslyPaid = parseFloat(farmerPaidTotals[farmer.id] || 0);
+      const remainingBalance = malipoHalisi - previouslyPaid;
+
+      return {
+        farmer,
+        mass,
+        sales,
+        inputByType,
+        usdBaki,
+        rate,
+        grossTzs,
+        deductionByName,
+        totalTzsDeductions,
+        malipoHalisi,
+        previouslyPaid,
+        remainingBalance
+      };
+    }).filter(row => row.mass > 0 || row.sales > 0 || Object.keys(row.inputByType).length > 0 || row.previouslyPaid > 0);
+
+    const inputSet = new Set();
+    const deductionSet = new Set();
+    
+    rows.forEach(r => {
+      Object.keys(r.inputByType).forEach(k => inputSet.add(k));
+      Object.keys(r.deductionByName).forEach(k => deductionSet.add(k));
+    });
+
+    const inputColumns = Array.from(inputSet).sort();
+    const deductionColumns = Array.from(deductionSet).sort();
+
+    const headers = [
+      'Farmer #', 'Name', ...(isSinglePS ? [] : ['PS']),
+      'Mass', 'Sales (USD)', 
+      ...inputColumns.map(c => `${c} (USD)`),
+      'USD Baki', 'Rate', 'Gross TZS',
+      ...deductionColumns,
+      'Net TZS', 'Paid to Date', 'Remaining'
+    ];
+
+    const formatUsdDeduction = (value) => `-$${parseFloat(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const formatTzsDeduction = (value) => `-${parseFloat(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+
     return {
       headers,
-      rows: data.map(p => [
-        new Date(p.paymentDate || p.createdAt).toLocaleDateString(),
-        getFarmerName(p.farmerId),
-        formatUsd(p.tobaccoAmount || 0),
-        formatUsd(p.inputDeduction || 0),
-        formatUsd(p.usdBalance || 0),
-        p.exchangeRate || '-',
-        formatTzs(p.netPayment || 0),
-        p.ps
+      rows: rows.map(r => [
+        r.farmer.farmerNumber || '-',
+        `${r.farmer.firstName} ${r.farmer.lastName}`,
+        ...(isSinglePS ? [] : [getPsName(r.farmer.ps) || '']),
+        r.mass.toFixed(2),
+        formatUsd(r.sales),
+        ...inputColumns.map(c => formatUsdDeduction(r.inputByType[c])),
+        formatUsd(r.usdBaki),
+        r.rate,
+        formatTzs(r.grossTzs),
+        ...deductionColumns.map(c => formatTzsDeduction(r.deductionByName[c])),
+        formatTzs(r.malipoHalisi),
+        formatTzs(r.previouslyPaid),
+        formatTzs(r.remainingBalance)
       ]),
-      title: 'Farmer Payment Report'
+      title: isSinglePS ? `${currentDisplayedPSName} Outstanding Balances Report` : 'Outstanding Balances Report'
     };
   };
 
@@ -358,7 +561,8 @@ function Reports() {
   else if (reportType === 'premium') currentReport = renderPremiumReport();
   else if (reportType === 'payments' && isSupervisor) currentReport = renderPaymentsReport();
 
-  const handleExport = () => {
+  const handleExport = (format) => {
+    const isExcel = format === 'excel';
     if (reportType === 'sales') {
       const headers = ['Market Center', 'Sale Number', 'Bales', 'Mass Purchased', 'Value Purchased', 'Average Price'];
       const rows = salesSummaryData.map((sale) => [
@@ -369,48 +573,38 @@ function Reports() {
         formatUsd(sale.valuePurchased),
         formatUsd(sale.averagePrice),
       ]);
-      exportToCSV('Tobacco_Sales_Summary', [headers, ...rows]);
+      const filename = isSinglePS ? `${currentDisplayedPSName}_Tobacco_Sales_Summary` : 'Tobacco_Sales_Summary';
+      if (isExcel) {
+        exportToExcel(filename, headers, rows);
+      } else {
+        exportToCSV(filename, [headers, ...rows]);
+      }
     } else {
-      exportToCSV(currentReport.title.replace(/ /g, '_'), [currentReport.headers, ...currentReport.rows]);
+      const filename = currentReport.title.replace(/ /g, '_');
+      if (isExcel) {
+        exportToExcel(filename, currentReport.headers, currentReport.rows);
+      } else {
+        exportToCSV(filename, [currentReport.headers, ...currentReport.rows]);
+      }
     }
   };
-
-  const navBtn = (id, label, Icon) => (
-    <button
-      onClick={() => setReportType(id)}
-      className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-semibold transition-all ${
-        reportType === id ? 'bg-green-600 text-white shadow-lg' : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-white text-gray-700 hover:bg-gray-100 border'
-      }`}
-    >
-      <Icon className="w-4 h-4" />
-      <span className="text-sm">{label}</span>
-    </button>
-  );
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center print:hidden">
         <h2 className="text-2xl font-bold">System Reports</h2>
-        <div className="flex space-x-3">
-          <button onClick={handlePrintReport} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg"><Printer className="w-5 h-5" /></button>
-          <button onClick={handleExport} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium"><Download className="w-4 h-4" /> <span>Export</span></button>
+        <div className="flex flex-wrap space-x-2 sm:space-x-3">
+          <button onClick={handlePrintReport} className="p-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"><Printer className="w-5 h-5" /></button>
+          <button onClick={() => handleExport('excel')} className="flex items-center space-x-2 px-3 sm:px-4 py-2 bg-emerald-600 hover:bg-emerald-700 transition-colors text-white rounded-lg font-medium shadow-sm"><Download className="w-4 h-4" /> <span className="hidden sm:inline">Excel</span></button>
+          <button onClick={() => handleExport('csv')} className="flex items-center space-x-2 px-3 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 transition-colors text-white rounded-lg font-medium shadow-sm"><Download className="w-4 h-4" /> <span className="hidden sm:inline">CSV</span></button>
         </div>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 print:hidden">
-        {navBtn('sales', 'Sales', Leaf)}
-        {navBtn('farmers', 'Farmers', Users)}
-        {navBtn('inputs', 'Inputs', FileSpreadsheet)}
-        {navBtn('grades', 'Grades', Tag)}
-        {navBtn('premium', 'Premium', Star)}
-        {isSupervisor && navBtn('payments', 'Payments', Banknote)}
       </div>
 
       <div className={`report-print-area overflow-hidden rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
         <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
           <h3 className="font-bold flex items-center space-x-2">
             <FileSpreadsheet className="w-5 h-5 text-green-600" />
-            <span>{reportType === 'sales' ? 'Tobacco Sales Summary' : currentReport.title}</span>
+            <span>{reportType === 'sales' ? (isSinglePS ? `${currentDisplayedPSName} Tobacco Sales Summary` : 'Tobacco Sales Summary') : currentReport.title}</span>
           </h3>
           <div className="flex items-center gap-3 print:hidden">
             {reportType === 'sales' && (
@@ -528,11 +722,28 @@ function Reports() {
             </table>
           ) : (
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-700/50">
-                <tr>{currentReport.headers.map((h, i) => <th key={i} className="p-3 text-left font-bold uppercase text-[10px]">{h}</th>)}</tr>
+              <thead className="bg-gray-100 dark:bg-gray-700/80 border-b-2 border-gray-200 dark:border-gray-600">
+                <tr>
+                   {currentReport.headers.map((h, i) => (
+                     <th key={i} className={`p-3 font-black uppercase tracking-wider text-[10px] text-gray-500 dark:text-gray-400 ${getColumnAlignment(h)}`}>
+                        {h}
+                     </th>
+                   ))}
+                </tr>
               </thead>
-              <tbody className="divide-y dark:divide-gray-700">
-                {currentReport.rows.map((row, i) => <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">{row.map((c, j) => <td key={j} className="p-3 whitespace-nowrap">{c}</td>)}</tr>)}
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {currentReport.rows.map((row, i) => (
+                   <tr key={i} className="hover:bg-blue-50/40 dark:hover:bg-gray-700/40 transition-colors">
+                     {row.map((c, j) => {
+                        const header = currentReport.headers[j];
+                        return (
+                          <td key={j} className={`p-3 whitespace-nowrap ${getColumnAlignment(header)} ${getCellColor(c, header)}`}>
+                             {c}
+                          </td>
+                        );
+                     })}
+                   </tr>
+                ))}
               </tbody>
             </table>
           )}

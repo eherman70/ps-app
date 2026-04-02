@@ -1,17 +1,39 @@
 import { useState } from 'react';
-import { Home, Calendar, Leaf, FileText, BarChart3, Settings, LogOut, FlaskConical, ChevronDown, ChevronRight, ClipboardList, Tag, Banknote, List, Briefcase } from 'lucide-react';
+import { Home, Calendar, Leaf, FileText, BarChart3, Settings, LogOut, FlaskConical, ChevronDown, ChevronRight, ClipboardList, Tag, Banknote, List, Briefcase, Package, Send, Building, CalendarDays, Award, MapPin, Users, User, FileSpreadsheet, Star } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
 function Sidebar() {
   const { currentUser, activeModule, setActiveModule, darkMode, logout, testMode } = useAppContext();
 
   const isSupervisor = currentUser.role === 'Supervisor' || currentUser.role === 'Admin';
+  const isAdmin = currentUser.role === 'Admin';
   const isClerk = currentUser.role === 'Clerk';
 
   const moduleItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'registration', label: 'Registration', icon: Calendar },
-    { id: 'inputs', label: 'Inputs', icon: Leaf, supOnly: false },
+    { 
+      id: 'registration', 
+      label: 'Registration', 
+      icon: Calendar,
+      subMenu: [
+        { id: 'societies', label: 'Societies', requireAdmin: true, icon: Building },
+        { id: 'seasons', label: 'Seasons', supOnly: true, icon: CalendarDays },
+        { id: 'grades', label: 'Grades', supOnly: true, icon: Award },
+        { id: 'markets', label: 'Market Centers', supOnly: true, icon: MapPin },
+        { id: 'users', label: 'Users', supOnly: true, icon: Users },
+        { id: 'farmers', label: 'Farmers', icon: User }
+      ]
+    },
+    { 
+      id: 'inputs', 
+      label: 'Inputs', 
+      icon: Leaf, 
+      supOnly: false,
+      subMenu: [
+        { id: 'types', label: 'Register Inputs/Advances', icon: Package },
+        { id: 'issue', label: 'Issue Inputs/Advances', icon: Send }
+      ]
+    },
     { 
       id: 'tobacco-sales', 
       label: 'Tobacco Sales', 
@@ -24,7 +46,19 @@ function Sidebar() {
         { id: 'payments', label: 'Payments', supOnly: true, icon: Banknote }
       ]
     },
-    { id: 'reports', label: 'Reports', icon: BarChart3 },
+    { 
+      id: 'reports', 
+      label: 'Reports', 
+      icon: BarChart3,
+      subMenu: [
+        { id: 'sales', label: 'Sales', icon: Leaf },
+        { id: 'farmers', label: 'Farmers', icon: Users },
+        { id: 'inputs', label: 'Inputs', icon: FileSpreadsheet },
+        { id: 'grades', label: 'Grades', icon: Tag },
+        { id: 'premium', label: 'Premium', icon: Star },
+        { id: 'payments', label: 'Payments', supOnly: true, icon: Banknote }
+      ]
+    },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -38,11 +72,6 @@ function Sidebar() {
 
   const { setActiveTabOverride } = useAppContext();
   const [openMenus, setOpenMenus] = useState({});
-
-  const toggleMenu = (id, e) => {
-    e.stopPropagation();
-    setOpenMenus(prev => ({ ...prev, [id]: !prev[id] }));
-  };
 
   const handleSubMenuClick = (moduleId, tabId) => {
     setActiveTabOverride(tabId);
@@ -71,15 +100,23 @@ function Sidebar() {
         {items.map(item => {
           const Icon = item.icon;
           const isActive = activeModule === item.id;
-          const isMenuOpen = openMenus[item.id] || isActive;
+          const isMenuOpen = openMenus[item.id] === undefined ? isActive : openMenus[item.id];
           
           return (
             <div key={item.id} className="w-full">
               <button
                 onClick={() => {
-                  setActiveModule(item.id);
-                  if (item.subMenu) {
-                    setOpenMenus(prev => ({ ...prev, [item.id]: true }));
+                  if (isActive) {
+                    if (item.subMenu) {
+                      setOpenMenus(prev => ({ ...prev, [item.id]: !isMenuOpen }));
+                    }
+                  } else {
+                    setActiveModule(item.id);
+                    if (item.subMenu) {
+                      setOpenMenus({ [item.id]: true });
+                    } else {
+                      setOpenMenus({});
+                    }
                   }
                 }}
                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 ${
@@ -94,7 +131,10 @@ function Sidebar() {
                 </div>
                 {item.subMenu && (
                   <div 
-                    onClick={(e) => toggleMenu(item.id, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenus(prev => ({ ...prev, [item.id]: !isMenuOpen }));
+                    }}
                     className="p-1 rounded-md hover:bg-white/10 transition-colors"
                   >
                     {isMenuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -106,6 +146,7 @@ function Sidebar() {
                 <div className="pl-12 pr-4 py-2 space-y-1">
                   {item.subMenu.map(sub => {
                     if (sub.supOnly && !isSupervisor) return null;
+                    if (sub.requireAdmin && !isAdmin) return null;
                     const SubIcon = sub.icon;
                     const isSubActive = isActive && useAppContext().activeTabOverride === sub.id;
                     return (
