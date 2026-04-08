@@ -1,7 +1,6 @@
 const express = require('express');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
-const { open } = require('sqlite');
+// SQLite dependencies are required lazily to avoid loading issues in production containers
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -39,6 +38,8 @@ async function initializeDatabase() {
       console.log('Connected to PostgreSQL securely.');
     } else {
       console.log('Connecting to SQLite database...');
+      const sqlite3 = require('sqlite3').verbose();
+      const { open } = require('sqlite');
       sqliteDb = await open({
         filename: './database.sqlite',
         driver: sqlite3.Database
