@@ -1,10 +1,12 @@
 const express = require('express');
+const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const { open } = require('sqlite');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -15,24 +17,46 @@ let db;
 
 async function initializeDatabase() {
   try {
-    sqliteDb = await open({
-      filename: './database.sqlite',
-      driver: sqlite3.Database
-    });
-
-    db = {
-      async execute(sql, params = []) {
-        if (sql.trim().toUpperCase().startsWith('SELECT')) {
-          const rows = await sqliteDb.all(sql, params);
-          return [rows];
-        } else {
-          const result = await sqliteDb.run(sql, params);
-          return [result];
+    if (process.env.DATABASE_URL) {
+      console.log('Connecting to PostgreSQL database...');
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+      });
+      db = {
+        async execute(sql, params = []) {
+          let pgSql = sql;
+          let i = 1;
+          pgSql = pgSql.replace(/\?/g, () => `$${i++}`);
+          const res = await pool.query(pgSql, params);
+          if (sql.trim().toUpperCase().startsWith('SELECT')) {
+            return [res.rows];
+          } else {
+            return [res];
+          }
         }
-      }
-    };
+      };
+      console.log('Connected to PostgreSQL securely.');
+    } else {
+      console.log('Connecting to SQLite database...');
+      sqliteDb = await open({
+        filename: './database.sqlite',
+        driver: sqlite3.Database
+      });
 
-    console.log('Connected to SQLite database securely.');
+      db = {
+        async execute(sql, params = []) {
+          if (sql.trim().toUpperCase().startsWith('SELECT')) {
+            const rows = await sqliteDb.all(sql, params);
+            return [rows];
+          } else {
+            const result = await sqliteDb.run(sql, params);
+            return [result];
+          }
+        }
+      };
+      console.log('Connected to SQLite securely.');
+    }
 
     await createTables();
     await ensureColumns();
@@ -303,8 +327,8 @@ async function createTables() {
       fullName VARCHAR(100) NOT NULL,
       role VARCHAR(50) NOT NULL,
       ps VARCHAR(50) NOT NULL,
-      darkMode TINYINT DEFAULT 0,
-      testMode TINYINT DEFAULT 0,
+      darkMode INTEGER DEFAULT 0,
+      testMode INTEGER DEFAULT 0,
       createdAt DATETIME NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS primary_societies (
@@ -330,7 +354,7 @@ async function createTables() {
       category VARCHAR(50),
       quality_level VARCHAR(50),
       grade_class VARCHAR(50),
-      is_quality_grade TINYINT NOT NULL DEFAULT 1,
+      is_quality_grade INTEGER NOT NULL DEFAULT 1,
       price DECIMAL(10,2) NOT NULL,
       description TEXT,
       status VARCHAR(20) NOT NULL,
@@ -495,12 +519,12 @@ async function ensureColumns() {
     "ALTER TABLE pcns ADD COLUMN closedBy VARCHAR(100)",
     "ALTER TABLE pcns ADD COLUMN approvedAt DATETIME",
     "ALTER TABLE pcns ADD COLUMN approvedBy VARCHAR(100)",
-    "ALTER TABLE users ADD COLUMN testMode TINYINT DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN testMode INTEGER DEFAULT 0",
     "ALTER TABLE grades ADD COLUMN grade_code VARCHAR(10)",
     "ALTER TABLE grades ADD COLUMN group_name VARCHAR(100)",
     "ALTER TABLE grades ADD COLUMN category VARCHAR(50)",
     "ALTER TABLE grades ADD COLUMN quality_level VARCHAR(50)",
-    "ALTER TABLE grades ADD COLUMN is_quality_grade TINYINT NOT NULL DEFAULT 1",
+    "ALTER TABLE grades ADD COLUMN is_quality_grade INTEGER NOT NULL DEFAULT 1",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_grade_code ON grades(grade_code)",
     "CREATE INDEX IF NOT EXISTS idx_grade_category ON grades(category)",
     "ALTER TABLE tickets ADD COLUMN grade_code VARCHAR(10)",
@@ -512,7 +536,9 @@ async function ensureColumns() {
     try {
       await db.execute(sql);
     } catch (error) {
-      if (!error.message.includes('duplicate column name')) {
+      if (!error.message.includes('duplicate column name') && 
+          !error.message.includes('column') && 
+          !error.message.includes('already exists')) {
         console.error('Error adding column:', error.message);
       }
     }
@@ -1734,6 +1760,15 @@ app.get('/api/reports/sales-by-sale', authenticateToken, async (req, res) => {
     console.error('Sales report error:', error);
     res.status(500).json({ error: 'Database error' });
   }
+});
+
+// ─── SERVE FRONTEND (PRODUCTION) ────────────────────────────────────────────────
+// Serve static frontend files from 'dist' outside the 'backend' folder
+app.use(express.static(path.join(__dirname, '../dist')));
+
+// Fallback for React Router
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist', 'index.html'));
 });
 
 // ─── START SERVER ─────────────────────────────────────────────────────────────

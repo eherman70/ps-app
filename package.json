@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "start": "node backend/server.js",
+    "postinstall": "cd backend && npm install",
     "dev": "concurrently \"npm run frontend\" \"npm run backend\"",
     "frontend": "vite",
     "backend": "npm run dev --prefix backend",

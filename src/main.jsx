@@ -5,7 +5,7 @@ import { AppProvider } from './context/AppContext';
 import './index.css'; // Optional: for global styles
 
 // API client for backend communication
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.PROD ? '/api' : 'http://localhost:3001/api';
 
 
 class ApiClient {
