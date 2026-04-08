@@ -38,9 +38,35 @@ async function initializeDatabase() {
       console.log('Connected to PostgreSQL securely.');
     } else {
       console.log('Connecting to SQLite database...');
-      const sqlite3 = require('sqlite3').verbose();
-      const { open } = require('sqlite');
-      sqliteDb = await open({
+      let sqlite3, openModule;
+      try {
+        sqlite3 = require('sqlite3').verbose();
+        openModule = require('sqlite').open;
+      } catch (err) {
+        if (err.code === 'ERR_DLOPEN_FAILED') {
+          console.error('\n===================================================================');
+          console.error('CRITICAL DEPLOYMENT ERROR: Missing PostgreSQL Connection!');
+          console.error('===================================================================');
+          console.error('Your application tried to load the local SQLite database because');
+          console.error('it could not find the DATABASE_URL environment variable.');
+          console.error('');
+          console.error('SQLite cannot run natively in this Railway container due to missing');
+          console.error('C++ binaries (GLIBC_2.38).');
+          console.error('');
+          console.error('TO FIX THIS IMMEDIATELY:');
+          console.error('1. Go to your Railway Project dashboard.');
+          console.error('2. Click on your Web Service (ps-app).');
+          console.error('3. Click the "Variables" tab.');
+          console.error('4. Click "New Variable" -> "Reference Variable".');
+          console.error('5. Select "DATABASE_URL" from your PostgreSQL service.');
+          console.error('6. Railway will automatically redeploy and use PostgreSQL!');
+          console.error('===================================================================\n');
+          process.exit(1);
+        }
+        throw err;
+      }
+      
+      sqliteDb = await openModule({
         filename: './database.sqlite',
         driver: sqlite3.Database
       });
