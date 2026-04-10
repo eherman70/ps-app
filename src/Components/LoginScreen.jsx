@@ -35,8 +35,8 @@ function LoginScreen() {
       <div className={`max-w-md w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-xl p-8`}>
         <div className="text-center mb-8">
           <Leaf className="w-16 h-16 text-green-600 mx-auto mb-4" />
-          <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Tobacco Management</h1>
-          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-2`}>Farmer Payment System</p>
+          <h1 className={`text-2xl sm:text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Tobacco Farmer</h1>
+          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-2 text-lg`}>Management System</p>
         </div>
 
         <div className="space-y-4">
