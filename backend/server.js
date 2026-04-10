@@ -356,14 +356,14 @@ async function createTables() {
       ps VARCHAR(50) NOT NULL,
       darkMode INTEGER DEFAULT 0,
       testMode INTEGER DEFAULT 0,
-      createdAt DATETIME NOT NULL
+      createdAt TIMESTAMP NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS primary_societies (
       id VARCHAR(36) PRIMARY KEY,
       name VARCHAR(100) UNIQUE NOT NULL,
       code VARCHAR(50) UNIQUE NOT NULL,
       status VARCHAR(20) NOT NULL,
-      createdAt DATETIME NOT NULL
+      createdAt TIMESTAMP NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS seasons (
       id VARCHAR(36) PRIMARY KEY,
@@ -371,7 +371,7 @@ async function createTables() {
       startDate DATE NOT NULL,
       endDate DATE NOT NULL,
       status VARCHAR(20) NOT NULL,
-      createdAt DATETIME NOT NULL
+      createdAt TIMESTAMP NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS grades (
       id VARCHAR(36) PRIMARY KEY,
@@ -385,14 +385,14 @@ async function createTables() {
       price DECIMAL(10,2) NOT NULL,
       description TEXT,
       status VARCHAR(20) NOT NULL,
-      createdAt DATETIME NOT NULL
+      createdAt TIMESTAMP NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS market_centers (
       id VARCHAR(36) PRIMARY KEY,
       name VARCHAR(100) NOT NULL,
       location VARCHAR(255),
       status VARCHAR(20) NOT NULL,
-      createdAt DATETIME NOT NULL
+      createdAt TIMESTAMP NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS farmers (
       id VARCHAR(36) PRIMARY KEY,
@@ -411,7 +411,7 @@ async function createTables() {
       seasonId VARCHAR(36),
       ps VARCHAR(50) NOT NULL,
       status VARCHAR(20) NOT NULL DEFAULT 'Active',
-      createdAt DATETIME NOT NULL,
+      createdAt TIMESTAMP NOT NULL,
       FOREIGN KEY (seasonId) REFERENCES seasons(id)
     )`,
     `CREATE TABLE IF NOT EXISTS input_types (
@@ -421,7 +421,7 @@ async function createTables() {
       unitPrice DECIMAL(10,2) NOT NULL,
       unit VARCHAR(20) NOT NULL,
       status VARCHAR(20) NOT NULL,
-      createdAt DATETIME NOT NULL
+      createdAt TIMESTAMP NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS issued_inputs (
       id VARCHAR(36) PRIMARY KEY,
@@ -432,7 +432,7 @@ async function createTables() {
       description TEXT,
       issueDate DATE NOT NULL,
       ps VARCHAR(50) NOT NULL,
-      createdAt DATETIME NOT NULL,
+      createdAt TIMESTAMP NOT NULL,
       FOREIGN KEY (farmerId) REFERENCES farmers(id),
       FOREIGN KEY (inputTypeId) REFERENCES input_types(id)
     )`,
@@ -443,7 +443,7 @@ async function createTables() {
       seasonId VARCHAR(36) NOT NULL,
       status VARCHAR(20) NOT NULL,
       ps VARCHAR(50) DEFAULT 'All',
-      createdAt DATETIME NOT NULL,
+      createdAt TIMESTAMP NOT NULL,
       FOREIGN KEY (marketCenterId) REFERENCES market_centers(id),
       FOREIGN KEY (seasonId) REFERENCES seasons(id),
       UNIQUE(saleNumber, marketCenterId, seasonId)
@@ -464,7 +464,7 @@ async function createTables() {
       totalValue DECIMAL(10,2) NOT NULL,
       captureDate DATE NOT NULL,
       ps VARCHAR(50) NOT NULL,
-      createdAt DATETIME NOT NULL,
+      createdAt TIMESTAMP NOT NULL,
       FOREIGN KEY (farmerId) REFERENCES farmers(id),
       FOREIGN KEY (gradeId) REFERENCES grades(id),
       FOREIGN KEY (marketCenterId) REFERENCES market_centers(id),
@@ -480,11 +480,11 @@ async function createTables() {
       totalWeight DECIMAL(10,2) NOT NULL DEFAULT 0,
       totalValue DECIMAL(10,2) NOT NULL DEFAULT 0,
       status VARCHAR(20) NOT NULL,
-      closedAt DATETIME,
+      closedAt TIMESTAMP,
       closedBy VARCHAR(100),
-      approvedAt DATETIME,
+      approvedAt TIMESTAMP,
       approvedBy VARCHAR(100),
-      createdAt DATETIME NOT NULL
+      createdAt TIMESTAMP NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS payments (
       id VARCHAR(36) PRIMARY KEY,
@@ -501,14 +501,14 @@ async function createTables() {
       netPayment DECIMAL(14,2) NOT NULL,
       paymentDate DATE NOT NULL,
       ps VARCHAR(50) NOT NULL,
-      createdAt DATETIME NOT NULL,
+      createdAt TIMESTAMP NOT NULL,
       FOREIGN KEY (farmerId) REFERENCES farmers(id),
       FOREIGN KEY (pcnId) REFERENCES pcns(id)
     )`,
     `CREATE TABLE IF NOT EXISTS system_settings (
       key VARCHAR(100) PRIMARY KEY,
       value TEXT NOT NULL,
-      updatedAt DATETIME NOT NULL
+      updatedAt TIMESTAMP NOT NULL
     )`
   ];
 
@@ -544,9 +544,9 @@ async function ensureColumns() {
     "ALTER TABLE payments ADD COLUMN levy DECIMAL(14,2) NOT NULL DEFAULT 0",
     "ALTER TABLE payments ADD COLUMN adminFee DECIMAL(14,2) NOT NULL DEFAULT 0",
     "ALTER TABLE payments ADD COLUMN totalDeductions DECIMAL(14,2) NOT NULL DEFAULT 0",
-    "ALTER TABLE pcns ADD COLUMN closedAt DATETIME",
+    "ALTER TABLE pcns ADD COLUMN closedAt TIMESTAMP",
     "ALTER TABLE pcns ADD COLUMN closedBy VARCHAR(100)",
-    "ALTER TABLE pcns ADD COLUMN approvedAt DATETIME",
+    "ALTER TABLE pcns ADD COLUMN approvedAt TIMESTAMP",
     "ALTER TABLE pcns ADD COLUMN approvedBy VARCHAR(100)",
     "ALTER TABLE users ADD COLUMN testMode INTEGER DEFAULT 0",
     "ALTER TABLE grades ADD COLUMN grade_code VARCHAR(10)",
