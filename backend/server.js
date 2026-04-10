@@ -429,6 +429,7 @@ async function createTables() {
       inputTypeId VARCHAR(36) NOT NULL,
       quantity DECIMAL(10,2) NOT NULL,
       totalCost DECIMAL(10,2) NOT NULL,
+      description TEXT,
       issueDate DATE NOT NULL,
       ps VARCHAR(50) NOT NULL,
       createdAt DATETIME NOT NULL,
@@ -532,6 +533,7 @@ async function ensureColumns() {
     "ALTER TABLE farmers ADD COLUMN idType VARCHAR(50)",
     "ALTER TABLE farmers ADD COLUMN idNumber VARCHAR(100)",
     "ALTER TABLE farmers ADD COLUMN seasonId VARCHAR(36)",
+    "ALTER TABLE issued_inputs ADD COLUMN description TEXT",
     "ALTER TABLE issued_inputs ADD COLUMN ps VARCHAR(50) NOT NULL DEFAULT 'All'",
     "ALTER TABLE tickets ADD COLUMN ps VARCHAR(50) NOT NULL DEFAULT 'All'",
     "ALTER TABLE tickets ADD COLUMN pcnNumber VARCHAR(50)",
@@ -1181,7 +1183,7 @@ app.get('/api/issued-inputs', authenticateToken, async (req, res) => {
 
 app.post('/api/issued-inputs', authenticateToken, async (req, res) => {
   try {
-    const { farmerId, inputTypeId, quantity, totalCost, issueDate, ps } = req.body;
+    const { farmerId, inputTypeId, quantity, totalCost, description, issueDate, ps } = req.body;
     const id = uuidv4();
     const supervisor = isSupervisor(req.user);
     const effectivePs = supervisor ? (ps || 'All') : req.user.ps;
@@ -1193,9 +1195,9 @@ app.post('/api/issued-inputs', authenticateToken, async (req, res) => {
       }
     }
 
-    await db.execute(`INSERT INTO issued_inputs (id, farmerId, inputTypeId, quantity, totalCost, issueDate, ps, createdAt)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, farmerId, inputTypeId, quantity, totalCost, issueDate, effectivePs,
+    await db.execute(`INSERT INTO issued_inputs (id, farmerId, inputTypeId, quantity, totalCost, description, issueDate, ps, createdAt)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, farmerId, inputTypeId, quantity, totalCost, description || null, issueDate, effectivePs,
        new Date().toISOString().slice(0, 19).replace('T', ' ')]);
 
     res.json({ id, farmerId, inputTypeId, quantity, totalCost, issueDate, ps: effectivePs });

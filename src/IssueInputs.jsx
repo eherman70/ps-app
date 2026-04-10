@@ -10,7 +10,7 @@ function IssueInputs() {
   const { items: farmers } = useStorage('farmer');
   const { items: inputTypes } = useStorage('inputtype');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ farmerId: '', inputTypeId: '', quantity: '', totalValue: '' });
+  const [form, setForm] = useState({ farmerId: '', inputTypeId: '', quantity: '', totalValue: '', description: '' });
 
   const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
   const activePSValue = getScopedPS(currentUser, activePS);
@@ -92,7 +92,7 @@ function IssueInputs() {
   };
 
   const resetForm = () => {
-    setForm({ farmerId: '', inputTypeId: '', quantity: '', totalValue: '' });
+    setForm({ farmerId: '', inputTypeId: '', quantity: '', totalValue: '', description: '' });
     setShowForm(false);
   };
 
@@ -156,16 +156,28 @@ function IssueInputs() {
             </div>
 
             {isCashAdvance ? (
-              <div className="md:col-span-2">
-                <label className="block mb-2 text-sm font-medium">Amount (TZS) *</label>
-                <input
-                  type="number"
-                  step="1"
-                  value={form.totalValue}
-                  onChange={(e) => handleAmountTzs(e.target.value)}
-                  placeholder="0"
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
-                />
+              <div className="md:col-span-2 space-y-4">
+                <div>
+                  <label className="block mb-2 text-sm font-medium">Amount (TZS) *</label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={form.totalValue}
+                    onChange={(e) => handleAmountTzs(e.target.value)}
+                    placeholder="0"
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-2 text-sm font-medium">Description</label>
+                  <input
+                    type="text"
+                    value={form.description}
+                    onChange={(e) => setForm({...form, description: e.target.value})}
+                    placeholder="e.g. Cash Advance issued for Mkopo Wa Kuni"
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
+                  />
+                </div>
               </div>
             ) : (
               <>
@@ -232,7 +244,10 @@ function IssueInputs() {
                 <td className="px-6 py-4 font-medium">
                   <div className="flex items-center gap-2">
                     <Package className="w-4 h-4 opacity-50" />
-                    {item.inputName}
+                    <div className="flex flex-col">
+                      <span>{item.inputName}</span>
+                      {item.description && <span className="text-[10px] text-gray-500 font-normal italic">{item.description}</span>}
+                    </div>
                   </div>
                 </td>
                 <td className="px-6 py-4 text-center font-medium">

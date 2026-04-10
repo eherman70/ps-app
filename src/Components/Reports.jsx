@@ -234,8 +234,9 @@ function Reports() {
       headers,
       rows: data.map(i => {
         const typeObj = inputTypes.find(t => t.id === i.inputTypeId);
-        const name = i.inputName || typeObj?.name || 'Unknown';
-        const isAdvance = i.isCashAdvance || name.toLowerCase().includes('advance') || typeObj?.category === 'Cash Advance';
+        const baseName = i.inputName || typeObj?.name || 'Unknown';
+        const name = i.description ? `${baseName} (${i.description})` : baseName;
+        const isAdvance = i.isCashAdvance || baseName.toLowerCase().includes('advance') || typeObj?.category === 'Cash Advance';
         
         return [
           new Date(i.issueDate || i.createdAt).toLocaleDateString(),
