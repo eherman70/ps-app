@@ -80,7 +80,18 @@ function Sidebar() {
 
   return (
     <aside className={`w-64 flex flex-col ${darkMode ? 'bg-gray-900 border-r border-gray-700' : 'bg-slate-900'} text-white print:hidden`}>
-      <div className="p-8 flex flex-col items-center">
+      <div className="p-6 pb-2 border-b border-white/10">
+        <div className="flex items-center space-x-3 text-green-500 mb-2">
+          <Leaf className="w-8 h-8" />
+          <span className="font-bold text-xs tracking-tighter uppercase whitespace-nowrap">
+            Tobacco Farmer
+          </span>
+        </div>
+        <div className="text-[10px] text-gray-500 font-bold tracking-[0.2em] uppercase pl-11 -mt-3">
+          Management System
+        </div>
+      </div>
+      <div className="p-8 pb-4 flex flex-col items-center">
         <div className="w-20 h-20 rounded-full bg-white text-slate-900 flex items-center justify-center text-3xl font-bold mb-4 shadow-lg border-4 border-white">
           {currentUser.fullName ? currentUser.fullName.charAt(0).toUpperCase() : 'U'}
         </div>

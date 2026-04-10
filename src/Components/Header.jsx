@@ -5,16 +5,11 @@ export default function Header() {
   const { currentUser, darkMode, toggleDarkMode, testMode, setTestMode } = useAppContext();
 
   return (
-    <header className="px-8 pt-8 pb-4 flex items-center justify-between z-10">
-      <div className="flex-1 max-w-2xl w-full">
-        {/* <div className={`flex items-center w-full rounded-2xl px-5 py-4 shadow-sm transition-shadow hover:shadow-md ${darkMode ? 'bg-gray-700' : 'bg-green-50'}`}>
-           <Search className="w-5 h-5 text-gray-400 mr-4" />
-          <input
-            type="text"
-            placeholder="Search farmers, tickets, sections..."
-            className="bg-transparent border-none outline-none w-full text-base dark:text-white placeholder-gray-400"
-          /> 
-        </div> */}
+    <header className="px-8 pt-6 pb-4 flex items-center justify-between z-10">
+      <div className="flex-1 flex items-center space-x-2">
+        <h1 className={`text-xl font-bold tracking-tight ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+          Tobacco Farmer <span className="text-green-600">Management System</span>
+        </h1>
       </div>
 
       <div className="flex items-center space-x-4 ml-6">
