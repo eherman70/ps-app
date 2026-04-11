@@ -16,6 +16,13 @@ let db;
 
 async function initializeDatabase() {
   try {
+    if (process.env.DATABASE_URL) {
+      console.log('Connecting to PostgreSQL database...');
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+      });
+
       // PostgreSQL folds all unquoted identifiers to lowercase.
       // e.g. `farmerNumber` becomes `farmernumber`, `startDate` becomes `startdate`.
       // We maintain an explicit map of every known column name so we can restore
@@ -61,7 +68,6 @@ async function initializeDatabase() {
         'gradelevel':         'gradeLevel',
         'gcode':              'gCode',
         // PCNs
-        'pcnnumber':          'pcnNumber',
         'totalfarmers':       'totalFarmers',
         'totaltickets':       'totalTickets',
         'totalweight':        'totalWeight',
@@ -70,7 +76,6 @@ async function initializeDatabase() {
         'approvedat':         'approvedAt',
         'approvedby':         'approvedBy',
         // Payments
-        'farmerid':           'farmerId',
         'pcnid':              'pcnId',
         'tobaccoamount':      'tobaccoAmount',
         'inputdeduction':     'inputDeduction',
