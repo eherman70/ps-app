@@ -16,22 +16,96 @@ let db;
 
 async function initializeDatabase() {
   try {
-    if (process.env.DATABASE_URL) {
-      console.log('Connecting to PostgreSQL database...');
-      const pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false }
-      });
-      // PostgreSQL returns column names in lowercase. Convert them back to
-      // camelCase so the rest of the app (which uses camelCase field names)
-      // works correctly with both SQLite (dev) and PostgreSQL (production).
-      const toCamelKey = (str) =>
-        str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+      // PostgreSQL folds all unquoted identifiers to lowercase.
+      // e.g. `farmerNumber` becomes `farmernumber`, `startDate` becomes `startdate`.
+      // We maintain an explicit map of every known column name so we can restore
+      // the correct camelCase keys expected by the rest of the application.
+      const PG_COL_MAP = {
+        // Common
+        'createdat':          'createdAt',
+        'updatedat':          'updatedAt',
+        'fullname':           'fullName',
+        'darkmode':           'darkMode',
+        'testmode':           'testMode',
+        // Seasons
+        'startdate':          'startDate',
+        'enddate':            'endDate',
+        // Farmers
+        'farmernumber':       'farmerNumber',
+        'firstname':          'firstName',
+        'middlename':         'middleName',
+        'lastname':           'lastName',
+        'phonenumber':        'phoneNumber',
+        'idtype':             'idType',
+        'idnumber':           'idNumber',
+        'seasonid':           'seasonId',
+        'seasonname':         'seasonName',
+        'contractedvolume':   'contractedVolume',
+        // Tickets
+        'ticketnumber':       'ticketNumber',
+        'pcnnumber':          'pcnNumber',
+        'farmerid':           'farmerId',
+        'gradeid':            'gradeId',
+        'marketcenterid':     'marketCenterId',
+        'salenumberid':       'saleNumberId',
+        'grossweight':        'grossWeight',
+        'tareweight':         'tareWeight',
+        'netweight':          'netWeight',
+        'priceperkg':         'pricePerKg',
+        'totalvalue':         'totalValue',
+        'capturedate':        'captureDate',
+        'marketcentername':   'marketCenterName',
+        'salenumber':         'saleNumber',
+        'gradename':          'gradeName',
+        'gradecategory':      'gradeCategory',
+        'gradelevel':         'gradeLevel',
+        'gcode':              'gCode',
+        // PCNs
+        'pcnnumber':          'pcnNumber',
+        'totalfarmers':       'totalFarmers',
+        'totaltickets':       'totalTickets',
+        'totalweight':        'totalWeight',
+        'closedat':           'closedAt',
+        'closedby':           'closedBy',
+        'approvedat':         'approvedAt',
+        'approvedby':         'approvedBy',
+        // Payments
+        'farmerid':           'farmerId',
+        'pcnid':              'pcnId',
+        'tobaccoamount':      'tobaccoAmount',
+        'inputdeduction':     'inputDeduction',
+        'usdbalance':         'usdBalance',
+        'exchangerate':       'exchangeRate',
+        'tzsgross':           'tzsGross',
+        'adminfee':           'adminFee',
+        'totaldeductions':    'totalDeductions',
+        'netpayment':         'netPayment',
+        'paymentdate':        'paymentDate',
+        // Input types & issued inputs
+        'inputtypeid':        'inputTypeId',
+        'inputname':          'inputName',
+        'unitprice':          'unitPrice',
+        'issuedate':          'issueDate',
+        'totalcost':          'totalCost',
+        // Grades (these are already snake_case so PG doesn't change them,
+        // but include lowercase versions just in case)
+        'grade_code':         'grade_code',
+        'group_name':         'group_name',
+        'quality_level':      'quality_level',
+        'grade_class':        'grade_class',
+        'is_quality_grade':   'is_quality_grade',
+        'isqualitygrade':     'is_quality_grade',
+        'gradeclass':         'grade_class',
+        'groupname':          'group_name',
+        'qualitylevel':       'quality_level',
+        'gradecode':          'grade_code',
+      };
       const toCamelRow = (row) => {
         if (!row || typeof row !== 'object') return row;
         const out = {};
         for (const key of Object.keys(row)) {
-          out[toCamelKey(key)] = row[key];
+          const mapped = PG_COL_MAP[key] ?? PG_COL_MAP[key.toLowerCase()];
+          out[mapped || key] = row[key];
         }
         return out;
       };
