@@ -22,6 +22,20 @@ async function initializeDatabase() {
         connectionString: process.env.DATABASE_URL,
         ssl: { rejectUnauthorized: false }
       });
+      // PostgreSQL returns column names in lowercase. Convert them back to
+      // camelCase so the rest of the app (which uses camelCase field names)
+      // works correctly with both SQLite (dev) and PostgreSQL (production).
+      const toCamelKey = (str) =>
+        str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+      const toCamelRow = (row) => {
+        if (!row || typeof row !== 'object') return row;
+        const out = {};
+        for (const key of Object.keys(row)) {
+          out[toCamelKey(key)] = row[key];
+        }
+        return out;
+      };
+
       db = {
         async execute(sql, params = []) {
           let pgSql = sql;
@@ -29,7 +43,7 @@ async function initializeDatabase() {
           pgSql = pgSql.replace(/\?/g, () => `$${i++}`);
           const res = await pool.query(pgSql, params);
           if (sql.trim().toUpperCase().startsWith('SELECT')) {
-            return [res.rows];
+            return [res.rows.map(toCamelRow)];
           } else {
             return [res];
           }
