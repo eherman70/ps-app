@@ -15,7 +15,7 @@ export function AppProvider({ children }) {
       await window.storage.set('user_admin', JSON.stringify({
         username: 'admin',
         password: 'admin123',
-        role: 'supervisor',
+        role: 'Admin',
         ps: 'All',
         fullName: 'System Administrator',
         createdAt: new Date().toISOString()

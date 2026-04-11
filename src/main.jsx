@@ -132,9 +132,17 @@ window.storage = {
       // Try API first for new data
       if (entity) {
         const data = JSON.parse(value);
-        if (key.includes('_')) {
-          // Update existing item
-          const id = key.split('_')[1];
+        // Determine the prefix used (e.g. 'farmer_'). Any key with a '_' after
+        // the entity prefix is treated as an update; bare key = create.
+        const underscoreIndex = key.indexOf('_');
+        if (underscoreIndex !== -1) {
+          // Slice everything after the first '_' to get the full ID
+          // (avoids split('_')[1] truncating UUIDs that contain underscores)
+          const id = key.slice(underscoreIndex + 1);
+          if (!id || id === 'undefined') {
+            console.error(`Storage.set: invalid id derived from key "${key}". Aborting update.`);
+            return;
+          }
           await window.api.update(entity, id, data);
         } else {
           // Create new item
@@ -159,7 +167,12 @@ window.storage = {
     const entity = this.getEntityFromKey(key);
     try {
       if (entity) {
-        const id = key.split('_')[1];
+        const underscoreIndex = key.indexOf('_');
+        const id = underscoreIndex !== -1 ? key.slice(underscoreIndex + 1) : undefined;
+        if (!id || id === 'undefined') {
+          console.error(`Storage.remove: invalid id derived from key "${key}". Aborting delete.`);
+          return;
+        }
         await window.api.delete(entity, id);
       } else {
         localStorage.removeItem(key);

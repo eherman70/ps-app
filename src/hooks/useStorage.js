@@ -30,8 +30,8 @@ export function useStorage(key) {
 
       // Fast path: if the adapter provided full items, use them immediately to bypass N+1
       if (isApiBacked && data?._items) {
-        // Cleanup stale ghost record (async background fire & forget)
-        window.storage.remove(key).catch(() => {});
+        // Cleanup stale ghost record from localStorage only (not via API)
+        try { localStorage.removeItem(key); } catch (_) {}
         setItems(data._items.map(item => formatItem(item, item.id || 'legacy')));
         setLoading(false);
         return;

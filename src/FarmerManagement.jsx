@@ -182,9 +182,9 @@ function FarmerManagement() {
 
   const filteredFarmers = filterItemsByPS(farmers, activePSValue)
     .filter(f =>
-      f.firstName.toLowerCase().includes(search.toLowerCase()) ||
-      f.lastName.toLowerCase().includes(search.toLowerCase()) ||
-      f.farmerNumber.toLowerCase().includes(search.toLowerCase())
+      (f.firstName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (f.lastName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (f.farmerNumber || '').toLowerCase().includes(search.toLowerCase())
     );
 
   return (
