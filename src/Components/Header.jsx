@@ -1,12 +1,23 @@
-import { Search, Moon, Sun } from 'lucide-react';
+import { Moon, Sun } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { useStorage } from '../hooks/useStorage';
 
 export default function Header() {
   const { currentUser, darkMode, toggleDarkMode, testMode, setTestMode } = useAppContext();
+  const { items: societies } = useStorage('ps');
+
+  const userSociety = currentUser?.ps && currentUser.ps !== 'All'
+    ? societies.find(s => s.code === currentUser.ps)
+    : null;
 
   return (
     <header className="px-8 pt-6 pb-4 flex items-center justify-between z-10">
-      <div className="flex-1 flex items-center space-x-2">
+      <div className="flex-1 flex flex-col justify-center">
+        {userSociety && (
+          <p className={`text-xs font-semibold uppercase tracking-widest mb-0.5 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+            {userSociety.name}
+          </p>
+        )}
         <h1 className={`text-xl font-bold tracking-tight ${darkMode ? 'text-white' : 'text-slate-800'}`}>
           Tobacco Farmer <span className="text-green-600">Management System</span>
         </h1>
