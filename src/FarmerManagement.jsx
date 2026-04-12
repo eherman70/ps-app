@@ -8,6 +8,7 @@ function FarmerManagement() {
   const { darkMode, currentUser, activePS, testMode } = useAppContext();
   const { items: farmers, loading, saveItem, deleteItem } = useStorage('farmer');
   const { items: seasons } = useStorage('season');
+  const { items: societies } = useStorage('ps');
 
   const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
   const activePSValue = getScopedPS(currentUser, activePS);
@@ -391,17 +392,31 @@ function FarmerManagement() {
               </select>
             </div>
 
-            {currentUser.ps === 'All' && (
-              <div>
-                <label className="block mb-2 text-sm">PS *</label>
-                <input
-                  type="text"
+            <div>
+              <label className="block mb-2 text-sm">Primary Society *</label>
+              {currentUser.ps === 'All' ? (
+                <select
                   value={form.ps}
                   onChange={(e) => setForm({...form, ps: e.target.value})}
                   className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
-                />
-              </div>
-            )}
+                >
+                  <option value="">-- Select Society --</option>
+                  {societies.filter(s => s.status === 'Active').map(s => (
+                    <option key={s.id} value={s.code}>{s.name} ({s.code})</option>
+                  ))}
+                </select>
+              ) : (
+                <div className={`w-full px-3 py-2 border rounded-lg flex items-center gap-2 ${
+                  darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-300'
+                }`}>
+                  <span className="px-2 py-0.5 rounded-full bg-green-600 text-white text-xs font-bold">{form.ps}</span>
+                  <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    {societies.find(s => s.code === form.ps)?.name || form.ps}
+                  </span>
+                  <span className={`ml-auto text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Auto-assigned</span>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex space-x-4 mt-6">
