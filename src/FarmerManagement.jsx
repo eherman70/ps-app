@@ -213,11 +213,11 @@ function FarmerManagement() {
 
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-3 md:col-span-1">
-              <label className="block mb-2 text-sm font-semibold">Farmer Number * <span className="font-normal text-gray-400">(e.g. TTB/KHM/200/012)</span></label>
+              <label className="block mb-2 text-sm font-semibold">Farmer Number * <span className="font-normal text-gray-400">(e.g. TTB/___/200/012)</span></label>
               <input
                 id="fm-farmernumber"
                 type="text"
-                // placeholder="e.g. TTB/KHM/200/012"
+                placeholder="e.g. TTB/KHM/200/012"
                 value={form.farmerNumber}
                 onChange={(e) => setForm({ ...form, farmerNumber: e.target.value.toUpperCase() })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-fname')}
