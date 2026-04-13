@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5000,
+    historyApiFallback: true,
   },
   build: {
     outDir: 'dist',

@@ -1,4 +1,61 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+
+// ── URL ↔ module/tab mapping ──────────────────────────────────────────────────
+const ROUTE_MAP = [
+  // Top-level
+  { path: '/',                          module: 'dashboard',     tab: null },
+  { path: '/dashboard',                 module: 'dashboard',     tab: null },
+  { path: '/settings',                  module: 'settings',      tab: null },
+  // Registration sub-tabs
+  { path: '/registration',              module: 'registration',  tab: 'farmers' },
+  { path: '/registration/societies',    module: 'registration',  tab: 'societies' },
+  { path: '/registration/seasons',      module: 'registration',  tab: 'seasons' },
+  { path: '/registration/grades',       module: 'registration',  tab: 'grades' },
+  { path: '/registration/markets',      module: 'registration',  tab: 'markets' },
+  { path: '/registration/users',        module: 'registration',  tab: 'users' },
+  { path: '/registration/farmers',      module: 'registration',  tab: 'farmers' },
+  { path: '/farmers',                   module: 'registration',  tab: 'farmers' },
+  // Inputs sub-tabs
+  { path: '/inputs',                    module: 'inputs',        tab: 'types' },
+  { path: '/inputs/types',              module: 'inputs',        tab: 'types' },
+  { path: '/inputs/issue',              module: 'inputs',        tab: 'issue' },
+  // Tobacco Sales sub-tabs
+  { path: '/tobacco-sales',             module: 'tobacco-sales', tab: 'capture' },
+  { path: '/tobacco-sales/register',    module: 'tobacco-sales', tab: 'register' },
+  { path: '/tobacco-sales/capture',     module: 'tobacco-sales', tab: 'capture' },
+  { path: '/tobacco-sales/tickets',     module: 'tobacco-sales', tab: 'tickets' },
+  { path: '/tobacco-sales/pcn',         module: 'tobacco-sales', tab: 'pcn' },
+  { path: '/tobacco-sales/payments',    module: 'tobacco-sales', tab: 'payments' },
+  // Reports sub-tabs
+  { path: '/reports',                   module: 'reports',       tab: 'sales' },
+  { path: '/reports/sales',             module: 'reports',       tab: 'sales' },
+  { path: '/reports/farmers',           module: 'reports',       tab: 'farmers' },
+  { path: '/reports/inputs',            module: 'reports',       tab: 'inputs' },
+  { path: '/reports/grades',            module: 'reports',       tab: 'grades' },
+  { path: '/reports/premium',           module: 'reports',       tab: 'premium' },
+  { path: '/reports/payments',          module: 'reports',       tab: 'payments' },
+];
+
+function pathFromState(module, tab) {
+  const match = ROUTE_MAP.find(r => r.module === module && r.tab === tab);
+  if (match && match.path !== '/') return match.path;
+  // Fallback: build path manually
+  if (!tab) return `/${module}`;
+  return `/${module}/${tab}`;
+}
+
+function stateFromPath(pathname) {
+  const clean = pathname.replace(/\/$/, '') || '/';
+  // Exact match first
+  const exact = ROUTE_MAP.find(r => r.path === clean);
+  if (exact) return { module: exact.module, tab: exact.tab };
+  // Prefix match (longest wins)
+  const prefix = ROUTE_MAP
+    .filter(r => clean.startsWith(r.path) && r.path !== '/')
+    .sort((a, b) => b.path.length - a.path.length)[0];
+  if (prefix) return { module: prefix.module, tab: prefix.tab };
+  return { module: 'dashboard', tab: null };
+}
 
 const AppContext = createContext();
 
@@ -6,8 +63,9 @@ export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [activePS, setActivePS] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
-  const [activeModule, setActiveModule] = useState('dashboard');
-  const [activeTabOverride, setActiveTabOverride] = useState(null);
+  const initialState = stateFromPath(window.location.pathname);
+  const [activeModule, setActiveModuleState] = useState(initialState.module);
+  const [activeTabOverride, setActiveTabOverride] = useState(initialState.tab);
   const [testMode, setTestModeState] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -66,13 +124,38 @@ export function AppProvider({ children }) {
     }
   };
 
+  // Sync URL whenever module/tab changes
+  useEffect(() => {
+    const newPath = pathFromState(activeModule, activeTabOverride);
+    if (window.location.pathname !== newPath) {
+      window.history.pushState({ module: activeModule, tab: activeTabOverride }, '', newPath);
+    }
+  }, [activeModule, activeTabOverride]);
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const onPopState = (e) => {
+      const { module, tab } = e.state || stateFromPath(window.location.pathname);
+      setActiveModuleState(module || 'dashboard');
+      setActiveTabOverride(tab || null);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  const setActiveModule = useCallback((mod) => {
+    setActiveModuleState(mod);
+  }, []);
+
   const logout = () => {
     setCurrentUser(null);
     setActivePS(null);
-    setActiveModule('dashboard');
+    setActiveModuleState('dashboard');
+    setActiveTabOverride(null);
     setDarkMode(false);
     setTestModeState(false);
     window.api.setToken(null);
+    window.history.pushState({}, '', '/');
   };
 
   const toggleDarkMode = async () => {
