@@ -83,31 +83,31 @@ function FarmerManagement() {
 
       const headers = rows[0];
       const data = rows.slice(1);
-      
+
       const counterResult = await window.storage.get('counter_farmer');
       let counter = parseInt(counterResult?.value || '1000');
-      
+
       let importedCount = 0;
       let errorCount = 0;
 
       for (const row of data) {
         if (row.length < 2) continue; // Skip empty rows
-        
+
         const rowData = {};
         headers.forEach((h, i) => {
-           rowData[h.trim()] = row[i];
+          rowData[h.trim()] = row[i];
         });
 
         // Validation & Mapping
         if (!rowData.farmerNumber || !rowData.firstName || !rowData.lastName || !rowData.village || !rowData.seasonName) {
-           errorCount++;
-           continue;
+          errorCount++;
+          continue;
         }
 
         const season = seasons.find(s => s.name === rowData.seasonName);
         if (!season) {
-           errorCount++;
-           continue;
+          errorCount++;
+          continue;
         }
 
         const ha = parseFloat(rowData.hectares) || 0;
@@ -152,9 +152,9 @@ function FarmerManagement() {
     const ha = parseFloat(val) || 0;
     // Only auto-calc if not in manual override mode
     if (!volumeOverride) {
-      setForm({...form, hectares: val, contractedVolume: (ha * 1400).toString()});
+      setForm({ ...form, hectares: val, contractedVolume: (ha * 1400).toString() });
     } else {
-      setForm({...form, hectares: val});
+      setForm({ ...form, hectares: val });
     }
   };
 
@@ -217,9 +217,9 @@ function FarmerManagement() {
               <input
                 id="fm-farmernumber"
                 type="text"
-                placeholder="e.g. TTB/KHM/200/012"
+                // placeholder="e.g. TTB/KHM/200/012"
                 value={form.farmerNumber}
-                onChange={(e) => setForm({...form, farmerNumber: e.target.value.toUpperCase()})}
+                onChange={(e) => setForm({ ...form, farmerNumber: e.target.value.toUpperCase() })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-fname')}
                 className={`w-full px-3 py-2 border-2 rounded-lg font-mono tracking-wide ${darkMode ? 'bg-gray-700 border-yellow-500 text-yellow-300 placeholder-gray-500' : 'border-yellow-400 bg-yellow-50 text-gray-800 placeholder-gray-400'}`}
               />
@@ -230,7 +230,7 @@ function FarmerManagement() {
                 id="fm-fname"
                 type="text"
                 value={form.firstName}
-                onChange={(e) => setForm({...form, firstName: e.target.value})}
+                onChange={(e) => setForm({ ...form, firstName: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-mname')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
@@ -241,7 +241,7 @@ function FarmerManagement() {
                 id="fm-mname"
                 type="text"
                 value={form.middleName}
-                onChange={(e) => setForm({...form, middleName: e.target.value})}
+                onChange={(e) => setForm({ ...form, middleName: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-lname')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
@@ -252,7 +252,7 @@ function FarmerManagement() {
                 id="fm-lname"
                 type="text"
                 value={form.lastName}
-                onChange={(e) => setForm({...form, lastName: e.target.value})}
+                onChange={(e) => setForm({ ...form, lastName: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-gender')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
@@ -263,7 +263,7 @@ function FarmerManagement() {
               <select
                 id="fm-gender"
                 value={form.gender}
-                onChange={(e) => setForm({...form, gender: e.target.value})}
+                onChange={(e) => setForm({ ...form, gender: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-age')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
@@ -277,7 +277,7 @@ function FarmerManagement() {
                 id="fm-age"
                 type="number"
                 value={form.age}
-                onChange={(e) => setForm({...form, age: e.target.value})}
+                onChange={(e) => setForm({ ...form, age: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-village')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
@@ -288,7 +288,7 @@ function FarmerManagement() {
                 id="fm-village"
                 type="text"
                 value={form.village}
-                onChange={(e) => setForm({...form, village: e.target.value})}
+                onChange={(e) => setForm({ ...form, village: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-hectares')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
@@ -319,19 +319,19 @@ function FarmerManagement() {
               <input
                 type="number"
                 value={form.contractedVolume}
-                onChange={(e) => setForm({...form, contractedVolume: e.target.value})}
+                onChange={(e) => setForm({ ...form, contractedVolume: e.target.value })}
                 readOnly={!volumeOverride}
                 className={`w-full px-3 py-2 border rounded-lg ${volumeOverride ? '' : 'bg-gray-100'} ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
               <p className="text-xs mt-1">{volumeOverride ? '⚠ Manual mode — auto-calc disabled' : 'Auto: 1 Ha = 1,400 Kg'}</p>
             </div>
-            
+
             <div>
               <label className="block mb-2 text-sm">Season *</label>
               <select
                 id="fm-season"
                 value={form.seasonId}
-                onChange={(e) => setForm({...form, seasonId: e.target.value})}
+                onChange={(e) => setForm({ ...form, seasonId: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-phone')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
@@ -346,7 +346,7 @@ function FarmerManagement() {
                 id="fm-phone"
                 type="tel"
                 value={form.phoneNumber}
-                onChange={(e) => setForm({...form, phoneNumber: e.target.value})}
+                onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-idtype')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
@@ -357,7 +357,7 @@ function FarmerManagement() {
               <select
                 id="fm-idtype"
                 value={form.idType}
-                onChange={(e) => setForm({...form, idType: e.target.value})}
+                onChange={(e) => setForm({ ...form, idType: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-idnumber')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
@@ -372,7 +372,7 @@ function FarmerManagement() {
                 id="fm-idnumber"
                 type="text"
                 value={form.idNumber}
-                onChange={(e) => setForm({...form, idNumber: e.target.value})}
+                onChange={(e) => setForm({ ...form, idNumber: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, 'fm-status')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               />
@@ -383,7 +383,7 @@ function FarmerManagement() {
               <select
                 id="fm-status"
                 value={form.status}
-                onChange={(e) => setForm({...form, status: e.target.value})}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
                 onKeyDown={(e) => handleKeyDown(e, 'submit')}
                 className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`}
               >
@@ -397,7 +397,7 @@ function FarmerManagement() {
               {currentUser.ps === 'All' ? (
                 <select
                   value={form.ps}
-                  onChange={(e) => setForm({...form, ps: e.target.value})}
+                  onChange={(e) => setForm({ ...form, ps: e.target.value })}
                   className={`w-full px-3 py-2 border rounded-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
                 >
                   <option value="">-- Select Society --</option>
@@ -406,9 +406,8 @@ function FarmerManagement() {
                   ))}
                 </select>
               ) : (
-                <div className={`w-full px-3 py-2 border rounded-lg flex items-center gap-2 ${
-                  darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-300'
-                }`}>
+                <div className={`w-full px-3 py-2 border rounded-lg flex items-center gap-2 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-300'
+                  }`}>
                   <span className="px-2 py-0.5 rounded-full bg-green-600 text-white text-xs font-bold">{form.ps}</span>
                   <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     {societies.find(s => s.code === form.ps)?.name || form.ps}
