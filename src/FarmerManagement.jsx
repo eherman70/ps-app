@@ -37,8 +37,12 @@ function FarmerManagement() {
     if (editing) {
       itemData.id = editing.id;
     }
-    await saveItem(editing?.id, itemData);
-    resetForm();
+    try {
+      await saveItem(editing?.id, itemData);
+      resetForm();
+    } catch (err) {
+      alert(err.message || 'Failed to save farmer. Please try again.');
+    }
   };
 
   const resetForm = () => {

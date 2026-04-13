@@ -11,6 +11,42 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
+// ─── Global error guards — prevent one bad async from crashing the server ─────
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err.stack || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[UNHANDLED REJECTION]', reason);
+});
+
+// ─── Tiny in-memory JWT user cache (avoids DB hit on every request) ────────────
+// Key: userId, Value: { user, expiresAt }
+const USER_CACHE = new Map();
+const USER_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const USER_CACHE_MAX = 1000;
+
+function cacheUser(userId, user) {
+  if (USER_CACHE.size >= USER_CACHE_MAX) {
+    // Evict oldest entry
+    USER_CACHE.delete(USER_CACHE.keys().next().value);
+  }
+  USER_CACHE.set(userId, { user, expiresAt: Date.now() + USER_CACHE_TTL_MS });
+}
+
+function getCachedUser(userId) {
+  const entry = USER_CACHE.get(userId);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    USER_CACHE.delete(userId);
+    return null;
+  }
+  return entry.user;
+}
+
+function invalidateCachedUser(userId) {
+  USER_CACHE.delete(userId);
+}
+
 let sqliteDb;
 let db;
 
@@ -20,7 +56,15 @@ async function initializeDatabase() {
       console.log('Connecting to PostgreSQL database...');
       const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false }
+        ssl: { rejectUnauthorized: false },
+        max: 20,                       // max simultaneous connections
+        min: 2,                        // keep at least 2 warm
+        idleTimeoutMillis: 30000,      // release idle connections after 30 s
+        connectionTimeoutMillis: 5000, // fail fast if no connection available
+        statement_timeout: 30000,      // kill runaway queries after 30 s
+      });
+      pool.on('error', (err, client) => {
+        console.error('[PG POOL] Unexpected idle-client error:', err.message);
       });
 
       // PostgreSQL folds all unquoted identifiers to lowercase.
@@ -697,7 +741,36 @@ async function createDefaultAdmin() {
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '2mb' })); // cap body size to prevent memory exhaustion
+
+// ─── Rate limiter for auth endpoints ─────────────────────────────────────────
+// Simple in-process window; for multi-instance deployments swap with redis-based limiter.
+const authAttempts = new Map(); // ip -> { count, resetAt }
+const AUTH_WINDOW_MS = 15 * 60 * 1000; // 15-minute window
+const AUTH_MAX_ATTEMPTS = 30;           // max attempts per window
+
+function authRateLimiter(req, res, next) {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const entry = authAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    authAttempts.set(ip, { count: 1, resetAt: now + AUTH_WINDOW_MS });
+    return next();
+  }
+  entry.count++;
+  if (entry.count > AUTH_MAX_ATTEMPTS) {
+    return res.status(429).json({ error: 'Too many login attempts. Try again in 15 minutes.' });
+  }
+  next();
+}
+
+// Clean up stale rate-limit entries every 15 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of authAttempts.entries()) {
+    if (now > entry.resetAt) authAttempts.delete(ip);
+  }
+}, AUTH_WINDOW_MS).unref();
 
 initializeDatabase();
 
@@ -729,8 +802,22 @@ async function authenticateToken(req, res, next) {
     return res.status(401).json({ error: 'Access token required' });
   }
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    return res.status(403).json({ error: 'Invalid or expired token' });
+  }
+
+  // Fast path: use cached user record
+  const cached = getCachedUser(decoded.id);
+  if (cached) {
+    req.user = cached;
+    return next();
+  }
+
+  // Slow path: fetch from DB and cache
+  try {
     const [rows] = await db.execute(
       'SELECT id, username, fullName, role, ps, darkMode, testMode FROM users WHERE id = ?',
       [decoded.id]
@@ -738,10 +825,12 @@ async function authenticateToken(req, res, next) {
     if (rows.length === 0) {
       return res.status(401).json({ error: 'User not found' });
     }
+    cacheUser(decoded.id, rows[0]);
     req.user = rows[0];
     next();
-  } catch (err) {
-    return res.status(403).json({ error: 'Invalid token' });
+  } catch (dbErr) {
+    console.error('[AUTH] DB lookup failed:', dbErr.message);
+    return res.status(503).json({ error: 'Authentication service temporarily unavailable' });
   }
 }
 
@@ -797,7 +886,7 @@ app.delete('/api/ps/:id', authenticateToken, async (req, res) => {
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authRateLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     const [rows] = await db.execute('SELECT * FROM users WHERE username = ?', [username]);
@@ -832,7 +921,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authRateLimiter, async (req, res) => {
   try {
     const { username, password, fullName, ps } = req.body;
     const [existing] = await db.execute('SELECT id FROM users WHERE username = ?', [username]);
@@ -934,6 +1023,8 @@ app.put('/api/users/:id', authenticateToken, async (req, res) => {
 
     params.push(targetId);
     await db.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+    // Invalidate cache so next request fetches fresh data
+    invalidateCachedUser(targetId);
 
     // Return updated user
     const [rows] = await db.execute(
@@ -955,6 +1046,7 @@ app.delete('/api/users/:id', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Cannot delete admin' });
     }
     await db.execute('DELETE FROM users WHERE id = ?', [req.params.id]);
+    invalidateCachedUser(req.params.id);
     res.json({ message: 'User deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Error deleting user' });
@@ -1157,6 +1249,10 @@ app.post('/api/farmers', authenticateToken, async (req, res) => {
                phoneNumber, idType, idNumber, hectares, contractedVolume, seasonId,
                status: status || 'Active', ps: effectivePs });
   } catch (error) {
+    // Unique constraint on farmerNumber
+    if (error.code === '23505' || (error.message && error.message.includes('UNIQUE') && error.message.includes('farmerNumber'))) {
+      return res.status(409).json({ error: `Farmer number '${req.body.farmerNumber}' already exists. Each farmer must have a unique number.` });
+    }
     console.error('Create farmer error:', error);
     res.status(500).json({ error: 'Error creating farmer' });
   }
@@ -1426,41 +1522,29 @@ app.post('/api/tickets', authenticateToken, async (req, res) => {
     const supervisor = isSupervisor(req.user);
     const effectivePs = supervisor ? (ps || 'All') : req.user.ps;
 
-    // Check for duplicate
-    const [existing] = await db.execute('SELECT id FROM tickets WHERE ticketNumber=?', [ticketNumber]);
-    if (existing.length > 0) {
-      return res.status(409).json({ 
-        error: 'Ticket already exists', 
-        ticketId: existing[0].id,
-        message: 'This ticket number has already been captured. Supervisors can update it.' 
-      });
-    }
-
-    // PCN Validations
+    // PCN Validations (still pre-validated before insert to show clear user messages)
     if (pcnNumber) {
-      // 1. Check for mixing Sale Numbers or PS
       const [pcnCheck] = await db.execute(
         'SELECT saleNumberId, ps FROM tickets WHERE pcnNumber = ? LIMIT 1',
         [pcnNumber]
       );
       if (pcnCheck.length > 0) {
         if (pcnCheck[0].saleNumberId !== saleNumberId || pcnCheck[0].ps !== effectivePs) {
-          return res.status(400).json({ 
-            error: 'PCN Mixing Violation', 
-            message: 'This PCN is already linked to a different Sale Number or Primary Society.' 
+          return res.status(400).json({
+            error: 'PCN Mixing Violation',
+            message: 'This PCN is already linked to a different Sale Number or Primary Society.'
           });
         }
       }
 
-      // 2. Check for max 25 tickets
       const [countCheck] = await db.execute(
         'SELECT COUNT(*) as count FROM tickets WHERE pcnNumber = ?',
         [pcnNumber]
       );
       if (countCheck[0].count >= 25) {
-        return res.status(400).json({ 
-          error: 'PCN Limit Reached', 
-          message: 'A PCN cannot contain more than 25 tickets.' 
+        return res.status(400).json({
+          error: 'PCN Limit Reached',
+          message: 'A PCN cannot contain more than 25 tickets.'
         });
       }
     }
@@ -1472,6 +1556,7 @@ app.post('/api/tickets', authenticateToken, async (req, res) => {
       }
     }
 
+    // ── Atomic insert — let the UNIQUE constraint handle true race duplicates ──
     await db.execute(`INSERT INTO tickets (id, ticketNumber, pcnNumber, farmerId, gradeId, grade_code, marketCenterId,
                        saleNumberId, grossWeight, tareWeight, netWeight, pricePerKg, totalValue, captureDate, ps, createdAt)
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1487,6 +1572,13 @@ app.post('/api/tickets', authenticateToken, async (req, res) => {
     res.json({ id, ticketNumber, pcnNumber, farmerId, gradeId, grade_code, marketCenterId, saleNumberId,
                grossWeight, tareWeight, netWeight, pricePerKg, totalValue, captureDate, ps: effectivePs });
   } catch (error) {
+    // Unique constraint — this is a true concurrent duplicate that slipped through validation
+    if (error.code === '23505' || (error.message && error.message.includes('UNIQUE') && error.message.includes('ticketNumber'))) {
+      return res.status(409).json({
+        error: 'Ticket already exists',
+        message: 'This ticket number has already been captured. Supervisors can update it.'
+      });
+    }
     console.error('Create ticket error:', error);
     res.status(500).json({ error: 'Error creating ticket' });
   }
