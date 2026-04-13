@@ -208,10 +208,15 @@ window.storage = {
         'user': 'users'
       };
       const entity = entityMap[normalizedPrefix] || normalizedPrefix;
-      const items = await window.api.getAll(entity);
+      const raw = await window.api.getAll(entity);
+
+      // Transparently handle paginated responses { data: [...], total, pages }
+      // and flat array responses from non-paginated endpoints.
+      const items = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+
       return {
         keys: items.map(item => `${normalizedPrefix}_${item.id}`),
-        _items: items // Optimization: fast-path for useStorage bulk loading
+        _items: items // fast-path for useStorage bulk loading
       };
     } catch (e) {
       // Fall back to localStorage
