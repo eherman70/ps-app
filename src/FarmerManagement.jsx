@@ -17,31 +17,20 @@ function FarmerManagement() {
   const [search, setSearch] = useState('');
   const [volumeOverride, setVolumeOverride] = useState(false);
   const [form, setForm] = useState({
-    firstName: '', middleName: '', lastName: '', gender: 'Male', age: '',
+    farmerNumber: '', firstName: '', middleName: '', lastName: '', gender: 'Male', age: '',
     phoneNumber: '', idType: 'Voter ID', idNumber: '', village: '',
     hectares: '', contractedVolume: '', seasonId: '', status: 'Active', ps: activePSValue === 'All' ? '' : activePSValue
   });
   const [editing, setEditing] = useState(null);
 
   const handleSubmit = async () => {
-    if (!form.firstName || !form.lastName || !form.seasonId || !form.ps) {
-      alert('Fill required fields: First Name, Last Name, Season, PS');
+    if (!form.farmerNumber || !form.firstName || !form.lastName || !form.seasonId || !form.ps) {
+      alert('Fill required fields: Farmer Number, First Name, Last Name, Season, PS');
       return;
-    }
-
-    let farmerNumber;
-    if (editing) {
-      farmerNumber = editing.farmerNumber;
-    } else {
-      const counterResult = await window.storage.get('counter_farmer');
-      const counter = parseInt(counterResult?.value || '1000');
-      farmerNumber = `F${counter}`;
-      await window.storage.set('counter_farmer', (counter + 1).toString());
     }
 
     const itemData = {
       ...form,
-      farmerNumber,
       testMode,
       createdAt: editing?.createdAt || new Date().toISOString()
     };
@@ -54,7 +43,7 @@ function FarmerManagement() {
 
   const resetForm = () => {
     setForm({
-      firstName: '', middleName: '', lastName: '', gender: 'Male', age: '',
+      farmerNumber: '', firstName: '', middleName: '', lastName: '', gender: 'Male', age: '',
       phoneNumber: '', idType: 'Voter ID', idNumber: '', village: '',
       hectares: '', contractedVolume: '', seasonId: '', status: 'Active', ps: activePSValue === 'All' ? '' : activePSValue
     });
@@ -76,8 +65,8 @@ function FarmerManagement() {
   };
 
   const downloadTemplate = () => {
-    const headers = ['firstName', 'lastName', 'middleName', 'gender', 'age', 'phoneNumber', 'village', 'hectares', 'seasonName', 'ps', 'idType', 'idNumber'];
-    const sample = [['John', 'Doe', 'K', 'Male', '45', '0712345678', 'Ushetu', '2.5', seasons[0]?.name || 'Season 2024', currentUser.ps === 'All' ? 'DEFAULT' : currentUser.ps, 'Voter ID', 'V-123456']];
+    const headers = ['farmerNumber', 'firstName', 'lastName', 'middleName', 'gender', 'age', 'phoneNumber', 'village', 'hectares', 'seasonName', 'ps', 'idType', 'idNumber'];
+    const sample = [['TTB/KHM/200/012', 'John', 'Doe', 'K', 'Male', '45', '0712345678', 'Ushetu', '2.5', seasons[0]?.name || 'Season 2024', currentUser.ps === 'All' ? 'DEFAULT' : currentUser.ps, 'Voter ID', 'V-123456']];
     const csv = generateCSV([headers, ...sample]);
     downloadCSV('farmer_import_template.csv', csv);
   };
@@ -110,7 +99,7 @@ function FarmerManagement() {
         });
 
         // Validation & Mapping
-        if (!rowData.firstName || !rowData.lastName || !rowData.village || !rowData.seasonName) {
+        if (!rowData.farmerNumber || !rowData.firstName || !rowData.lastName || !rowData.village || !rowData.seasonName) {
            errorCount++;
            continue;
         }
@@ -122,7 +111,7 @@ function FarmerManagement() {
         }
 
         const ha = parseFloat(rowData.hectares) || 0;
-        const farmerNumber = `F${counter++}`;
+        const farmerNumber = rowData.farmerNumber.trim();
 
         const farmerData = {
           firstName: rowData.firstName,
@@ -152,7 +141,6 @@ function FarmerManagement() {
         }
       }
 
-      await window.storage.set('counter_farmer', counter.toString());
       alert(`Import complete! Successfully imported: ${importedCount}, Errors: ${errorCount}`);
       // Clear file input
       e.target.value = null;
@@ -224,6 +212,18 @@ function FarmerManagement() {
           </div>
 
           <div className="grid grid-cols-3 gap-4">
+            <div className="col-span-3 md:col-span-1">
+              <label className="block mb-2 text-sm font-semibold">Farmer Number * <span className="font-normal text-gray-400">(e.g. TTB/KHM/200/012)</span></label>
+              <input
+                id="fm-farmernumber"
+                type="text"
+                placeholder="e.g. TTB/KHM/200/012"
+                value={form.farmerNumber}
+                onChange={(e) => setForm({...form, farmerNumber: e.target.value.toUpperCase()})}
+                onKeyDown={(e) => handleKeyDown(e, 'fm-fname')}
+                className={`w-full px-3 py-2 border-2 rounded-lg font-mono tracking-wide ${darkMode ? 'bg-gray-700 border-yellow-500 text-yellow-300 placeholder-gray-500' : 'border-yellow-400 bg-yellow-50 text-gray-800 placeholder-gray-400'}`}
+              />
+            </div>
             <div>
               <label className="block mb-2 text-sm">First Name *</label>
               <input
