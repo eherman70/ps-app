@@ -9,7 +9,7 @@ module.exports = function usersRouter(getDb, auth) {
   const router = Router();
 
   // ─── AUTH ─────────────────────────────────────────────────────────────────
-  router.post('/auth/login', authRateLimiter, async (req, res) => {
+  router.post('/login', authRateLimiter, async (req, res) => {
     try {
       const db = getDb();
       const { username, password } = req.body;
@@ -26,7 +26,7 @@ module.exports = function usersRouter(getDb, auth) {
     }
   });
 
-  router.post('/auth/register', authRateLimiter, async (req, res) => {
+  router.post('/register', authRateLimiter, async (req, res) => {
     try {
       const db = getDb();
       const { username, password, fullName, ps } = req.body;
@@ -49,7 +49,7 @@ module.exports = function usersRouter(getDb, auth) {
     }
   });
 
-  router.get('/auth/me', auth, (req, res) => res.json({ user: req.user }));
+  router.get('/me', auth, (req, res) => res.json({ user: req.user }));
 
   // ─── USERS CRUD ───────────────────────────────────────────────────────────
   router.get('/', auth, async (req, res) => {
