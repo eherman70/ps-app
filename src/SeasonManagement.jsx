@@ -63,9 +63,9 @@ function SeasonManagement() {
     if (!confirm(
       `Close season "${season.name}"?\n\n` +
       `This will:\n` +
-      `â€¢ Mark the season as Closed\n` +
-      `â€¢ Calculate pending debts for each farmer\n` +
-      `â€¢ Carry over any outstanding balances to the next season\n\n` +
+      `- Mark the season as Closed\n` +
+      `- Calculate pending debts for each farmer\n` +
+      `- Carry over any outstanding balances to the next season\n\n` +
       `This action cannot be undone. Proceed?`
     )) return;
 
@@ -107,7 +107,7 @@ function SeasonManagement() {
         <div className={`mb-6 px-4 py-3 rounded-lg border text-sm font-medium flex items-center gap-2 ${darkMode ? 'bg-green-900/30 border-green-700 text-green-300' : 'bg-green-50 border-green-200 text-green-700'}`}>
           <Calendar className="w-4 h-4" />
           Active season: <span className="font-bold">{activeSeason.name}</span>
-          &nbsp;â€” To open a new season, close this one first.
+          &nbsp;-- To open a new season, close this one first.
         </div>
       )}
 
@@ -205,7 +205,7 @@ function SeasonManagement() {
               </div>
             </>
           ) : (
-            <p className="text-sm text-green-600">All farmers fully settled â€” no debts to carry over.</p>
+            <p className="text-sm text-green-600">All farmers fully settled -- no debts to carry over.</p>
           )}
         </div>
       )}
@@ -230,7 +230,7 @@ function SeasonManagement() {
                   </div>
                 </td>
                 <td className="px-6 py-4 font-medium text-gray-600 dark:text-gray-300">
-                   {new Date(item.startDate).toLocaleDateString()} â€” {new Date(item.endDate).toLocaleDateString()}
+                   {new Date(item.startDate).toLocaleDateString()} -- {new Date(item.endDate).toLocaleDateString()}
                 </td>
                 <td className="px-6 py-4 text-center">
                   <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
