@@ -11,8 +11,10 @@ function RegistrationModule() {
   const { currentUser, darkMode, activeTabOverride, setActiveTabOverride } = useAppContext();
   const isAdminOrSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
   const isAdmin = currentUser.role === 'Admin';
+  const isPreLinked = currentUser.ps && currentUser.ps !== 'All';
   // Supervisors don't have access to societies, so their default should be seasons if supervisor, otherwise farmers
-  const [activeTab, setActiveTab] = useState(activeTabOverride || (isAdmin ? 'societies' : (isAdminOrSupervisor ? 'seasons' : 'farmers')));
+  // Pre-linked users (even Admin) skip societies since they're already associated with one
+  const [activeTab, setActiveTab] = useState(activeTabOverride || (isAdmin && !isPreLinked ? 'societies' : (isAdminOrSupervisor ? 'seasons' : 'farmers')));
 
   useEffect(() => {
     if (activeTabOverride) {

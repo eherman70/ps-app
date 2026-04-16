@@ -158,6 +158,7 @@ function Sidebar() {
                   {item.subMenu.map(sub => {
                     if (sub.supOnly && !isSupervisor) return null;
                     if (sub.requireAdmin && !isAdmin) return null;
+                    if (sub.id === 'societies' && currentUser.ps && currentUser.ps !== 'All') return null;
                     const SubIcon = sub.icon;
                     const isSubActive = isActive && useAppContext().activeTabOverride === sub.id;
                     return (
