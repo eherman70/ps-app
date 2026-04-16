@@ -234,7 +234,7 @@ function PaymentModule() {
 
     const mappedRows = filteredFarmers.map((farmer) => {
       const farmerTickets = seasonScopedTickets.filter(t => t.farmerId === farmer.id);
-      const farmerInputs = inputs.filter(i => i.farmerId === farmer.id);
+      const farmerInputs = inputs.filter(i => i.farmerId === farmer.id && !String(i.description || '').startsWith('[SETTLED]'));
 
       const mass = farmerTickets.reduce((sum, t) => sum + parseFloat(t.mass || t.netWeight || 0), 0);
       const sales = farmerTickets.reduce((sum, t) => sum + parseFloat(t.value || t.totalValue || 0), 0);

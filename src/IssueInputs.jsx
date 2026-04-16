@@ -149,7 +149,7 @@ function IssueInputs() {
                 className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600' : 'border-gray-300'}`}
               >
                 <option value="">Select Type</option>
-                {inputTypes.map(t => (
+                {inputTypes.filter(t => t.name !== '__DEBT_CARRYOVER__').map(t => (
                   <option key={t.id} value={t.id}>{t.name} (${t.unitPrice}/{t.unit})</option>
                 ))}
               </select>
@@ -227,44 +227,56 @@ function IssueInputs() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {filteredItems.map(item => (
-              <tr key={item.id} className={darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50 transition'}>
-                <td className="px-6 py-4 text-gray-500">
-                  {new Date(item.createdAt).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 opacity-50" />
-                    <div className="flex flex-col">
-                       <span className="font-bold">{item.farmerName}</span>
-                       <span className="text-[10px] text-gray-500">{item.farmerNumber}</span>
+            {filteredItems.map(item => {
+              const isSettled = String(item.description || '').startsWith('[SETTLED]');
+              const isCarryover = item.inputName === '__DEBT_CARRYOVER__' || String(item.description || '').startsWith('Carried over from');
+              const displayName = isCarryover ? 'Debt Carryover' : item.inputName;
+              const isAdvance = !isCarryover && (item.isCashAdvance || item.inputName?.toLowerCase().includes('advance') || (inputTypes.find(t => t.id === item.inputTypeId)?.category === 'Cash Advance'));
+              return (
+                <tr key={item.id} className={`${
+                  isSettled ? (darkMode ? 'opacity-40' : 'opacity-50') : (darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50 transition')
+                }`}>
+                  <td className="px-6 py-4 text-gray-500">
+                    {new Date(item.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 opacity-50" />
+                      <div className="flex flex-col">
+                        <span className="font-bold">{item.farmerName}</span>
+                        <span className="text-[10px] text-gray-500">{item.farmerNumber}</span>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 font-medium">
-                  <div className="flex items-center gap-2">
-                    <Package className="w-4 h-4 opacity-50" />
-                    <div className="flex flex-col">
-                      <span>{item.inputName}</span>
-                      {item.description && <span className="text-[10px] text-gray-500 font-normal italic">{item.description}</span>}
+                  </td>
+                  <td className="px-6 py-4 font-medium">
+                    <div className="flex items-center gap-2">
+                      <Package className="w-4 h-4 opacity-50" />
+                      <div className="flex flex-col">
+                        <span className={isCarryover ? 'text-orange-500 font-semibold' : ''}>{displayName}</span>
+                        {isSettled && <span className="text-[10px] text-gray-400 italic">Settled at season close</span>}
+                        {isCarryover && item.description && <span className="text-[10px] text-orange-400 italic">{item.description}</span>}
+                        {!isSettled && !isCarryover && item.description && <span className="text-[10px] text-gray-500 font-normal italic">{item.description}</span>}
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-center font-medium">
-                  {item.isCashAdvance || item.inputName?.toLowerCase().includes('advance') || (inputTypes.find(t => t.id === item.inputTypeId)?.category === 'Cash Advance') ? '-' : (item.quantity || '-')}
-                </td>
-                <td className="px-6 py-4 text-right font-bold text-red-600 dark:text-red-400">
-                   {item.isCashAdvance || item.inputName?.toLowerCase().includes('advance') || (inputTypes.find(t => t.id === item.inputTypeId)?.category === 'Cash Advance') 
-                     ? `-${parseFloat(item.totalCost ?? item.totalValue ?? 0).toLocaleString()} TZS` 
-                     : `-$${parseFloat(item.totalCost ?? item.totalValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                </td>
-                <td className="px-6 py-4 text-right text-gray-400">
-                   <button onClick={() => handleDelete(item.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 rounded-lg transition">
-                      <Trash2 className="w-5 h-5" />
-                   </button>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-6 py-4 text-center font-medium">
+                    {isAdvance || isCarryover ? '-' : (item.quantity || '-')}
+                  </td>
+                  <td className="px-6 py-4 text-right font-bold text-red-600 dark:text-red-400">
+                    {isAdvance
+                      ? `-${parseFloat(item.totalCost ?? item.totalValue ?? 0).toLocaleString()} TZS`
+                      : `-$${parseFloat(item.totalCost ?? item.totalValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </td>
+                  <td className="px-6 py-4 text-right text-gray-400">
+                    {!isSettled && !isCarryover && (
+                      <button onClick={() => handleDelete(item.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 rounded-lg transition">
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {filteredItems.length === 0 && !loading && <div className="text-center py-12 text-gray-500 italic">No inputs have been issued yet</div>}

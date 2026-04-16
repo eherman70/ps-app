@@ -61,27 +61,160 @@ module.exports = function registrationRouter(getDb, auth) {
 
   router.post('/seasons', auth, async (req, res) => {
     try {
-      const { name, startDate, endDate, status } = req.body;
+      if (!isSupervisor(req.user)) return res.status(403).json({ error: 'Access denied' });
+      const { name, startDate, endDate } = req.body;
+      // Enforce single active season
+      const [active] = await getDb().execute("SELECT id, name FROM seasons WHERE status = 'Active' LIMIT 1");
+      if (active.length) {
+        return res.status(409).json({
+          error: `Season "${active[0].name}" is still active. Please close it before creating a new season.`
+        });
+      }
       const id = uuidv4();
       await getDb().execute(
         'INSERT INTO seasons (id, name, startDate, endDate, status, createdAt) VALUES (?, ?, ?, ?, ?, ?)',
-        [id, name, startDate, endDate, status, new Date().toISOString().slice(0, 19).replace('T', ' ')]
+        [id, name, startDate, endDate, 'Active', new Date().toISOString().slice(0, 19).replace('T', ' ')]
       );
-      res.json({ id, name, startDate, endDate, status });
-    } catch (err) { res.status(500).json({ error: 'Error creating season' }); }
+      res.json({ id, name, startDate, endDate, status: 'Active' });
+    } catch (err) {
+      if (err.status) return res.status(err.status).json({ error: err.message });
+      res.status(500).json({ error: 'Error creating season' });
+    }
   });
 
   router.put('/seasons/:id', auth, async (req, res) => {
     try {
+      if (!isSupervisor(req.user)) return res.status(403).json({ error: 'Access denied' });
       const { name, startDate, endDate, status } = req.body;
+      // If re-activating, ensure no other season is active
+      if (status === 'Active') {
+        const [active] = await getDb().execute(
+          "SELECT id, name FROM seasons WHERE status = 'Active' AND id != ? LIMIT 1",
+          [req.params.id]
+        );
+        if (active.length) {
+          return res.status(409).json({
+            error: `Season "${active[0].name}" is still active. Please close it first.`
+          });
+        }
+      }
       await getDb().execute('UPDATE seasons SET name=?, startDate=?, endDate=?, status=? WHERE id=?',
         [name, startDate, endDate, status, req.params.id]);
       res.json({ id: req.params.id, name, startDate, endDate, status });
     } catch (err) { res.status(500).json({ error: 'Error updating season' }); }
   });
 
+  // ─── CLOSE SEASON (with debt carryover) ──────────────────────────────────
+  router.post('/seasons/:id/close', auth, async (req, res) => {
+    try {
+      if (!isSupervisor(req.user)) return res.status(403).json({ error: 'Access denied' });
+
+      const db = getDb();
+      const [seasonRows] = await db.execute('SELECT * FROM seasons WHERE id = ?', [req.params.id]);
+      if (!seasonRows.length) return res.status(404).json({ error: 'Season not found' });
+      const season = seasonRows[0];
+      if (season.status === 'Closed') return res.status(400).json({ error: 'Season is already closed' });
+
+      // Get or create the system "Debt Carryover" input type
+      let [ctRows] = await db.execute("SELECT id FROM input_types WHERE name = '__DEBT_CARRYOVER__' LIMIT 1");
+      let carryoverTypeId;
+      if (ctRows.length) {
+        carryoverTypeId = ctRows[0].id;
+      } else {
+        carryoverTypeId = uuidv4();
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        await db.execute(
+          `INSERT INTO input_types (id, name, category, unitPrice, unit, status, createdAt)
+           VALUES (?, '__DEBT_CARRYOVER__', 'Debt Carryover', 1, 'Fixed', 'Active', ?)`,
+          [carryoverTypeId, now]
+        );
+      }
+
+      // Compute net debt per farmer: total issued inputs cost minus total payment input deductions
+      const [issuedRows] = await db.execute(
+        `SELECT farmerId, SUM(totalCost) as totalIssued
+         FROM issued_inputs
+         WHERE description NOT LIKE '[SETTLED]%'
+         GROUP BY farmerId`
+      );
+      const [paidRows] = await db.execute(
+        `SELECT farmerId, SUM(inputDeduction) as totalPaid FROM payments GROUP BY farmerId`
+      );
+
+      const issuedMap = {};
+      for (const r of issuedRows) issuedMap[r.farmerId] = parseFloat(r.totalIssued || 0);
+      const paidMap = {};
+      for (const r of paidRows) paidMap[r.farmerId] = parseFloat(r.totalPaid || 0);
+
+      // All farmers who have any issued inputs
+      const farmerIds = [...new Set([...Object.keys(issuedMap)])];
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const today = new Date().toISOString().slice(0, 10);
+
+      const carryovers = [];
+
+      await db.transaction(async (tx) => {
+        // Mark season as closed
+        await tx.execute("UPDATE seasons SET status = 'Closed' WHERE id = ?", [req.params.id]);
+
+        for (const farmerId of farmerIds) {
+          const issued = issuedMap[farmerId] || 0;
+          const paid   = paidMap[farmerId]   || 0;
+          const netDebt = Math.round((issued - paid) * 100) / 100;
+
+          if (netDebt <= 0) continue; // fully settled, nothing to carry over
+
+          // Fetch farmer details for ps
+          const [fRows] = await tx.execute('SELECT ps, farmerNumber, firstName, lastName FROM farmers WHERE id = ?', [farmerId]);
+          if (!fRows.length) continue;
+          const farmer = fRows[0];
+
+          // Mark all existing active issued_inputs for this farmer as [SETTLED]
+          await tx.execute(
+            `UPDATE issued_inputs SET description = '[SETTLED] ' || COALESCE(description, '')
+             WHERE farmerId = ? AND (description IS NULL OR description NOT LIKE '[SETTLED]%')`,
+            [farmerId]
+          );
+
+          // Create a single carryover record for the outstanding balance
+          const carryoverId = uuidv4();
+          await tx.execute(
+            `INSERT INTO issued_inputs
+               (id, farmerId, inputTypeId, quantity, totalCost, description, issueDate, ps, createdAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [carryoverId, farmerId, carryoverTypeId, 1, netDebt,
+             `Carried over from season: ${season.name || season.id}`,
+             today, farmer.ps, now]
+          );
+
+          carryovers.push({
+            farmerId,
+            farmerNumber: farmer.farmerNumber,
+            farmerName: `${farmer.firstName} ${farmer.lastName}`,
+            netDebt
+          });
+        }
+      });
+
+      res.json({
+        message: `Season "${season.name}" closed successfully.`,
+        carryoverCount: carryovers.length,
+        carryovers
+      });
+    } catch (err) {
+      console.error('[Seasons] Close error:', err.message);
+      res.status(500).json({ error: 'Error closing season: ' + err.message });
+    }
+  });
+
   router.delete('/seasons/:id', auth, async (req, res) => {
     try {
+      if (!isSupervisor(req.user)) return res.status(403).json({ error: 'Access denied' });
+      // Prevent deletion of the active season
+      const [rows] = await getDb().execute("SELECT status FROM seasons WHERE id = ?", [req.params.id]);
+      if (rows.length && rows[0].status === 'Active') {
+        return res.status(400).json({ error: 'Cannot delete an active season. Close it first.' });
+      }
       await getDb().execute('DELETE FROM seasons WHERE id=?', [req.params.id]);
       res.json({ message: 'Season deleted' });
     } catch (err) { res.status(500).json({ error: 'Error deleting season' }); }
