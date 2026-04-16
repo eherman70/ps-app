@@ -277,9 +277,6 @@ function SeasonManagement() {
 
 export default SeasonManagement;
 
-  const [editing, setEditing] = useState(null);
-
-  const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
 
   const handleSubmit = async () => {
     if (!form.name || !form.startDate || !form.endDate) {
