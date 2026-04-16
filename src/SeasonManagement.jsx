@@ -277,8 +277,6 @@ function SeasonManagement() {
 
 export default SeasonManagement;
 
-
-  const handleSubmit = async () => {
     if (!form.name || !form.startDate || !form.endDate) {
       alert('Fill all required fields');
       return;
