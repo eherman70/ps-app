@@ -277,8 +277,6 @@ function SeasonManagement() {
 
 export default SeasonManagement;
 
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', startDate: '', endDate: '', status: 'Active' });
   const [editing, setEditing] = useState(null);
 
   const isSupervisor = currentUser.role === 'Admin' || currentUser.role === 'Supervisor';
